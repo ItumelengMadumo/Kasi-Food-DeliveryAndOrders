@@ -1,0 +1,91 @@
+{
+  "TableName": "KasiMainTable",
+  "BillingMode": "PAY_PER_REQUEST",
+  "AttributeDefinitions": [
+    { "AttributeName": "PK", "AttributeType": "S" },
+    { "AttributeName": "SK", "AttributeType": "S" },
+    { "AttributeName": "GSI1PK", "AttributeType": "S" },
+    { "AttributeName": "GSI1SK", "AttributeType": "S" },
+    { "AttributeName": "GSI2PK", "AttributeType": "S" },
+    { "AttributeName": "GSI2SK", "AttributeType": "S" }
+  ],
+  "KeySchema": [
+    { "AttributeName": "PK", "KeyType": "HASH" },
+    { "AttributeName": "SK", "KeyType": "RANGE" }
+  ],
+  "GlobalSecondaryIndexes": [
+    {
+      "IndexName": "GSI1-VendorOrders",
+      "KeySchema": [
+        { "AttributeName": "GSI1PK", "KeyType": "HASH" },
+        { "AttributeName": "GSI1SK", "KeyType": "RANGE" }
+      ],
+      "Projection": { "ProjectionType": "ALL" }
+    },
+    {
+      "IndexName": "GSI2-CustomerOrders",
+      "KeySchema": [
+        { "AttributeName": "GSI2PK", "KeyType": "HASH" },
+        { "AttributeName": "GSI2SK", "KeyType": "RANGE" }
+      ],
+      "Projection": { "ProjectionType": "ALL" }
+    }
+  ],
+  "Tags": [
+    { "Key": "Project", "Value": "KasiFoodDelivery" },
+    { "Key": "Environment", "Value": "production" }
+  ],
+  "_entityPatterns": {
+    "User": {
+      "PK": "USER#<userId>",
+      "SK": "PROFILE",
+      "attributes": ["name", "phone", "email", "role", "isGuest", "createdAt"]
+    },
+    "Vendor": {
+      "PK": "VENDOR#<vendorId>",
+      "SK": "PROFILE",
+      "attributes": [
+        "ownerId", "name", "address", "location", "contactDetails",
+        "workingHours", "status", "deliveryType", "deliveryValue",
+        "hasBankAccount", "bankDetails", "imageUrl", "description",
+        "rating", "totalReviews", "createdAt"
+      ]
+    },
+    "VendorApplication": {
+      "PK": "APPLICATION#<applicationId>",
+      "SK": "PROFILE",
+      "attributes": [
+        "applicantName", "phone", "email", "businessName", "address",
+        "description", "hasBankAccount", "status", "createdAt"
+      ]
+    },
+    "MenuItem": {
+      "PK": "VENDOR#<vendorId>",
+      "SK": "MENU#<menuItemId>",
+      "attributes": ["name", "description", "price", "imageUrl", "available", "category", "createdAt"]
+    },
+    "Order": {
+      "PK": "ORDER#<orderId>",
+      "SK": "METADATA",
+      "GSI1PK": "VENDOR#<vendorId>",
+      "GSI1SK": "ORDER#<createdAt>",
+      "GSI2PK": "USER#<customerId>",
+      "GSI2SK": "ORDER#<createdAt>",
+      "attributes": [
+        "customerId", "guestDetails", "vendorId", "status",
+        "deliveryMethod", "deliveryFee", "subtotal", "totalAmount",
+        "paymentMethod", "contactPhone", "specialInstructions", "createdAt", "updatedAt"
+      ]
+    },
+    "OrderItem": {
+      "PK": "ORDER#<orderId>",
+      "SK": "ITEM#<itemId>",
+      "attributes": ["menuItemId", "name", "price", "quantity"]
+    },
+    "Review": {
+      "PK": "VENDOR#<vendorId>",
+      "SK": "REVIEW#<reviewId>",
+      "attributes": ["userId", "guestName", "rating", "comment", "createdAt"]
+    }
+  }
+}

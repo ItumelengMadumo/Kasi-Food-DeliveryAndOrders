@@ -1,0 +1,336 @@
+# ─────────────────────────────────────────────────
+# Kasi Food Delivery — AppSync GraphQL Schema
+# ─────────────────────────────────────────────────
+
+# ── Scalars ──────────────────────────────────────
+scalar AWSDateTime
+scalar AWSJSON
+
+# ── Enums ────────────────────────────────────────
+enum Role {
+  CUSTOMER
+  VENDOR
+  ADMIN
+}
+
+enum VendorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum DeliveryType {
+  PERCENTAGE
+  FLAT
+}
+
+enum DeliveryMethod {
+  PICKUP
+  DELIVERY
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  DIGITAL
+  CASH_ON_DELIVERY
+  CASH_ON_PICKUP
+  EFT
+}
+
+# ── Types ─────────────────────────────────────────
+
+type User {
+  id: ID!
+  name: String
+  phone: String!
+  email: String
+  role: Role!
+  isGuest: Boolean!
+  createdAt: AWSDateTime!
+}
+
+type GuestDetails {
+  name: String!
+  phone: String!
+}
+
+type Location {
+  lat: Float!
+  lng: Float!
+}
+
+type WorkingHours {
+  monday: String
+  tuesday: String
+  wednesday: String
+  thursday: String
+  friday: String
+  saturday: String
+  sunday: String
+}
+
+type BankDetails {
+  bankName: String!
+  accountNumber: String!
+  accountHolder: String!
+  branchCode: String!
+}
+
+type Vendor {
+  id: ID!
+  ownerId: ID!
+  name: String!
+  address: String!
+  location: Location
+  contactDetails: String
+  workingHours: AWSJSON
+  status: VendorStatus!
+  deliveryType: DeliveryType
+  deliveryValue: Float
+  hasBankAccount: Boolean!
+  imageUrl: String
+  description: String
+  rating: Float
+  totalReviews: Int
+  createdAt: AWSDateTime!
+}
+
+type MenuItem {
+  id: ID!
+  vendorId: ID!
+  name: String!
+  description: String
+  price: Float!
+  imageUrl: String
+  available: Boolean!
+  category: String
+  createdAt: AWSDateTime!
+}
+
+type OrderItem {
+  id: ID!
+  orderId: ID!
+  menuItemId: ID!
+  name: String!
+  price: Float!
+  quantity: Int!
+}
+
+type Order {
+  id: ID!
+  customerId: ID
+  guestDetails: GuestDetails
+  vendorId: ID!
+  vendor: Vendor
+  status: OrderStatus!
+  deliveryMethod: DeliveryMethod!
+  deliveryFee: Float
+  subtotal: Float!
+  totalAmount: Float!
+  paymentMethod: PaymentMethod!
+  contactPhone: String!
+  specialInstructions: String
+  items: [OrderItem!]
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type Review {
+  id: ID!
+  vendorId: ID!
+  userId: ID
+  guestName: String
+  rating: Int!
+  comment: String
+  createdAt: AWSDateTime!
+}
+
+type VendorApplication {
+  id: ID!
+  applicantName: String!
+  phone: String!
+  email: String
+  businessName: String!
+  address: String!
+  description: String
+  hasBankAccount: Boolean!
+  status: VendorStatus!
+  createdAt: AWSDateTime!
+}
+
+# ── Input Types ────────────────────────────────────
+
+input RegisterUserInput {
+  name: String!
+  phone: String!
+  email: String
+  password: String!
+}
+
+input GuestCheckoutInput {
+  name: String!
+  phone: String!
+}
+
+input CreateVendorApplicationInput {
+  applicantName: String!
+  phone: String!
+  email: String
+  businessName: String!
+  address: String!
+  description: String
+  hasBankAccount: Boolean!
+}
+
+input UpdateVendorProfileInput {
+  vendorId: ID!
+  name: String
+  address: String
+  contactDetails: String
+  workingHours: AWSJSON
+  deliveryType: DeliveryType
+  deliveryValue: Float
+  hasBankAccount: Boolean
+  description: String
+  imageUrl: String
+}
+
+input CreateMenuItemInput {
+  vendorId: ID!
+  name: String!
+  description: String
+  price: Float!
+  imageUrl: String
+  category: String
+  available: Boolean
+}
+
+input UpdateMenuItemInput {
+  menuItemId: ID!
+  vendorId: ID!
+  name: String
+  description: String
+  price: Float
+  imageUrl: String
+  category: String
+  available: Boolean
+}
+
+input OrderItemInput {
+  menuItemId: ID!
+  name: String!
+  price: Float!
+  quantity: Int!
+}
+
+input CreateOrderInput {
+  customerId: ID
+  guestDetails: GuestCheckoutInput
+  vendorId: ID!
+  deliveryMethod: DeliveryMethod!
+  paymentMethod: PaymentMethod!
+  contactPhone: String!
+  specialInstructions: String
+  items: [OrderItemInput!]!
+}
+
+input UpdateOrderStatusInput {
+  orderId: ID!
+  status: OrderStatus!
+}
+
+input CreateReviewInput {
+  vendorId: ID!
+  userId: ID
+  guestName: String
+  rating: Int!
+  comment: String
+}
+
+input LocationInput {
+  lat: Float!
+  lng: Float!
+}
+
+# ── Queries ────────────────────────────────────────
+
+type Query {
+  # Vendor queries
+  getNearbyVendors(location: LocationInput!, radiusKm: Float): [Vendor!]!
+  getVendor(vendorId: ID!): Vendor
+  getAllVendors(status: VendorStatus): [Vendor!]!
+  getVendorMenu(vendorId: ID!): [MenuItem!]!
+
+  # Order queries
+  getOrder(orderId: ID!): Order
+  getVendorOrders(vendorId: ID!, status: OrderStatus): [Order!]!
+  getCustomerOrders(customerId: ID!): [Order!]!
+
+  # User queries
+  getUser(userId: ID!): User
+  getCurrentUser: User
+
+  # Admin queries
+  getPendingVendorApplications: [VendorApplication!]!
+  getAllOrders(status: OrderStatus, limit: Int): [Order!]!
+
+  # Review queries
+  getVendorReviews(vendorId: ID!): [Review!]!
+}
+
+# ── Mutations ──────────────────────────────────────
+
+type Mutation {
+  # Auth
+  registerUser(input: RegisterUserInput!): User!
+  guestCheckout(input: GuestCheckoutInput!): User!
+
+  # Vendor lifecycle
+  createVendorApplication(input: CreateVendorApplicationInput!): VendorApplication!
+  approveVendor(applicationId: ID!): Vendor!
+  rejectVendor(applicationId: ID!, reason: String): VendorApplication!
+
+  # Vendor management
+  updateVendorProfile(input: UpdateVendorProfileInput!): Vendor!
+  updateVendorBankDetails(vendorId: ID!, bankDetails: AWSJSON!): Vendor!
+
+  # Menu management
+  createMenuItem(input: CreateMenuItemInput!): MenuItem!
+  updateMenuItem(input: UpdateMenuItemInput!): MenuItem!
+  deleteMenuItem(menuItemId: ID!, vendorId: ID!): Boolean!
+  toggleMenuItemAvailability(menuItemId: ID!, vendorId: ID!, available: Boolean!): MenuItem!
+
+  # Orders
+  createOrder(input: CreateOrderInput!): Order!
+  updateOrderStatus(input: UpdateOrderStatusInput!): Order!
+  cancelOrder(orderId: ID!, reason: String): Order!
+
+  # Reviews
+  createReview(input: CreateReviewInput!): Review!
+}
+
+# ── Subscriptions ──────────────────────────────────
+
+type Subscription {
+  onOrderStatusUpdated(orderId: ID!): Order
+    @aws_subscribe(mutations: ["updateOrderStatus"])
+
+  onNewOrderForVendor(vendorId: ID!): Order
+    @aws_subscribe(mutations: ["createOrder"])
+}
+
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
