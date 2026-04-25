@@ -25,7 +25,7 @@ export async function getVendor(vendorId: string): Promise<Vendor | null> {
     query GetVendor($vendorId: ID!) {
       getVendor(vendorId: $vendorId) {
         id ownerId name address contactDetails workingHours
-        status deliveryType deliveryValue hasBankAccount
+        status deliveryType deliveryValue hasBankAccount whatsappNumber
         imageUrl description rating totalReviews createdAt
         location { lat lng }
       }
@@ -40,7 +40,7 @@ export async function getAllVendors(status?: VendorStatus): Promise<Vendor[]> {
     query GetAllVendors($status: VendorStatus) {
       getAllVendors(status: $status) {
         id ownerId name address contactDetails status
-        deliveryType deliveryValue hasBankAccount
+        deliveryType deliveryValue hasBankAccount whatsappNumber
         imageUrl description rating totalReviews createdAt
         location { lat lng }
       }
@@ -346,4 +346,126 @@ export async function getVendorReviews(vendorId: string): Promise<Review[]> {
   `;
   const result = await client.graphql({ query, variables: { vendorId } });
   return (result as { data: { getVendorReviews: Review[] } }).data.getVendorReviews;
+}
+
+// ── Mark Order Paid ───────────────────────────────
+
+export async function markOrderPaid(orderId: string): Promise<Order> {
+  const mutation = /* GraphQL */ `
+    mutation MarkOrderPaid($orderId: ID!) {
+      markOrderPaid(orderId: $orderId) {
+        id status paymentStatus updatedAt
+      }
+    }
+  `;
+  const result = await client.graphql({ query: mutation, variables: { orderId } });
+  return (result as { data: { markOrderPaid: Order } }).data.markOrderPaid;
+}
+
+// ── Vendor Profile Update ─────────────────────────
+
+export interface UpdateVendorProfileInput {
+  vendorId: string;
+  name?: string;
+  address?: string;
+  contactDetails?: string;
+  whatsappNumber?: string;
+  deliveryType?: 'PERCENTAGE' | 'FLAT';
+  deliveryValue?: number;
+  hasBankAccount?: boolean;
+  description?: string;
+  imageUrl?: string;
+}
+
+export async function updateVendorProfile(input: UpdateVendorProfileInput): Promise<Vendor> {
+  const mutation = /* GraphQL */ `
+    mutation UpdateVendorProfile($input: UpdateVendorProfileInput!) {
+      updateVendorProfile(input: $input) {
+        id ownerId name address contactDetails status
+        deliveryType deliveryValue hasBankAccount whatsappNumber
+        imageUrl description createdAt
+      }
+    }
+  `;
+  const result = await client.graphql({ query: mutation, variables: { input } });
+  return (result as { data: { updateVendorProfile: Vendor } }).data.updateVendorProfile;
+}
+
+// ── AppSync Subscriptions ─────────────────────────
+//
+// Usage:
+//   const subscription = subscribeToNewOrders(vendorId, (order) => { ... });
+//   // cleanup:
+//   subscription.unsubscribe();
+
+/** GraphQL subscription document for new orders on a vendor. */
+export const ON_NEW_ORDER_FOR_VENDOR = /* GraphQL */ `
+  subscription OnNewOrderForVendor($vendorId: ID!) {
+    onNewOrderForVendor(vendorId: $vendorId) {
+      id customerId vendorId status deliveryMethod deliveryFee
+      subtotal totalAmount paymentMethod paymentStatus contactPhone
+      createdAt updatedAt
+      guestDetails { name phone }
+      items { id menuItemId name price quantity }
+    }
+  }
+`;
+
+/** GraphQL subscription document for order status updates. */
+export const ON_ORDER_STATUS_UPDATED = /* GraphQL */ `
+  subscription OnOrderStatusUpdated($orderId: ID!) {
+    onOrderStatusUpdated(orderId: $orderId) {
+      id status paymentStatus updatedAt
+    }
+  }
+`;
+
+/**
+ * Subscribe to new orders for a vendor.
+ * Returns a subscription handle with an `unsubscribe()` method.
+ */
+export function subscribeToNewOrders(
+  vendorId: string,
+  onNext: (order: Order) => void,
+  onError?: (err: unknown) => void
+): { unsubscribe: () => void } {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sub = (client.graphql({
+    query: ON_NEW_ORDER_FOR_VENDOR,
+    variables: { vendorId },
+  }) as any).subscribe({
+    next: ({ data }: { data: { onNewOrderForVendor: Order } }) => {
+      if (data?.onNewOrderForVendor) onNext(data.onNewOrderForVendor);
+    },
+    error: (err: unknown) => {
+      console.warn('[subscribeToNewOrders] error:', err);
+      if (onError) onError(err);
+    },
+  });
+  return sub;
+}
+
+/**
+ * Subscribe to status updates for a specific order.
+ * Returns a subscription handle with an `unsubscribe()` method.
+ */
+export function subscribeToOrderStatus(
+  orderId: string,
+  onNext: (order: Partial<Order>) => void,
+  onError?: (err: unknown) => void
+): { unsubscribe: () => void } {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sub = (client.graphql({
+    query: ON_ORDER_STATUS_UPDATED,
+    variables: { orderId },
+  }) as any).subscribe({
+    next: ({ data }: { data: { onOrderStatusUpdated: Partial<Order> } }) => {
+      if (data?.onOrderStatusUpdated) onNext(data.onOrderStatusUpdated);
+    },
+    error: (err: unknown) => {
+      console.warn('[subscribeToOrderStatus] error:', err);
+      if (onError) onError(err);
+    },
+  });
+  return sub;
 }

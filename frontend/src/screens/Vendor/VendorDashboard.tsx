@@ -1,14 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusCircle, Package, Settings, ToggleLeft, ToggleRight } from 'lucide-react';
+import { PlusCircle, Package, Settings, ToggleLeft, ToggleRight, Bell } from 'lucide-react';
 import { useAuthStore } from '../../state/authStore';
-import { getVendorMenu, getVendorOrders, updateOrderStatus, toggleMenuItemAvailability } from '../../services/api';
+import {
+  getVendorMenu,
+  getVendorOrders,
+  updateOrderStatus,
+  toggleMenuItemAvailability,
+  markOrderPaid,
+  createOrder,
+  subscribeToNewOrders,
+} from '../../services/api';
 import { LoadingSpinner } from '../../components/ui/Card';
 import { OrderStatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
 import type { MenuItem, Order, OrderStatus } from '../../types';
 
-// Demo vendor data for offline mode
+// ── Demo data ──────────────────────────────────────────────────────────────
+
 const DEMO_VENDOR_ID = 'demo-vendor-1';
 const DEMO_ORDERS: Order[] = [
   {
@@ -49,68 +59,168 @@ const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
   OUT_FOR_DELIVERY: 'COMPLETED',
 };
 
+// ── Component ──────────────────────────────────────────────────────────────
+
 export function VendorDashboard() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const vendorId = user?.id ? `vendor_${user.id}` : DEMO_VENDOR_ID;
 
-  const [tab, setTab] = useState<'orders' | 'menu'>('orders');
+  const [tab, setTab] = useState<'orders' | 'menu' | 'add'>('orders');
   const [orders, setOrders] = useState<Order[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingOrder, setUpdatingOrder] = useState<string | null>(null);
+  const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
+
+  const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isDemoMode = useRef(false);
+
+  // ── Initial load ──────────────────────────────────────────────────────
 
   useEffect(() => {
     loadData();
+    return () => {
+      subscriptionRef.current?.unsubscribe();
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
   }, [vendorId]);
 
   async function loadData() {
     setLoading(true);
     try {
-      const [o, m] = await Promise.all([
-        getVendorOrders(vendorId),
-        getVendorMenu(vendorId),
-      ]);
+      const [o, m] = await Promise.all([getVendorOrders(vendorId), getVendorMenu(vendorId)]);
       setOrders(o);
       setMenu(m);
+      isDemoMode.current = false;
+      // Start AppSync subscription for real-time updates
+      startSubscription();
     } catch {
+      isDemoMode.current = true;
       setOrders(DEMO_ORDERS);
       setMenu([
-        { id: 'm1', vendorId, name: 'Pap & Wors', price: 45, available: true, createdAt: new Date().toISOString() },
-        { id: 'm2', vendorId, name: 'Chicken Feet', price: 30, available: true, createdAt: new Date().toISOString() },
-        { id: 'm3', vendorId, name: 'Samp & Beans', price: 35, available: false, createdAt: new Date().toISOString() },
+        {
+          id: 'm1',
+          vendorId,
+          name: 'Pap & Wors',
+          price: 45,
+          available: true,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'm2',
+          vendorId,
+          name: 'Chicken Feet',
+          price: 30,
+          available: true,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'm3',
+          vendorId,
+          name: 'Samp & Beans',
+          price: 35,
+          available: false,
+          createdAt: new Date().toISOString(),
+        },
       ]);
+      // Fall back to polling when subscriptions aren't available
+      startPolling();
     } finally {
       setLoading(false);
     }
   }
 
+  // ── AppSync subscription ──────────────────────────────────────────────
+
+  function startSubscription() {
+    subscriptionRef.current?.unsubscribe();
+    try {
+      subscriptionRef.current = subscribeToNewOrders(
+        vendorId,
+        (newOrder) => {
+          setOrders((prev) => {
+            if (prev.some((o) => o.id === newOrder.id)) return prev;
+            return [newOrder, ...prev];
+          });
+          const customerName =
+            newOrder.guestDetails?.name || `Customer #${newOrder.customerId?.slice(-4)}`;
+          setNewOrderAlert(`New order from ${customerName}! 🔔`);
+          setTimeout(() => setNewOrderAlert(null), 8000);
+        },
+        () => {
+          // Subscription failed — fall back to polling
+          startPolling();
+        }
+      );
+    } catch {
+      startPolling();
+    }
+  }
+
+  // ── Polling fallback (every 10 s) ─────────────────────────────────────
+
+  function startPolling() {
+    if (pollingRef.current) return; // already polling
+    pollingRef.current = setInterval(async () => {
+      try {
+        const fresh = await getVendorOrders(vendorId);
+        setOrders((prev) => {
+          const newOnes = fresh.filter((o) => !prev.some((p) => p.id === o.id));
+          if (newOnes.length > 0) {
+            const firstName = newOnes[0].guestDetails?.name || 'a customer';
+            setNewOrderAlert(`New order from ${firstName}! 🔔`);
+            setTimeout(() => setNewOrderAlert(null), 8000);
+            return [...newOnes, ...prev];
+          }
+          // Update statuses for existing orders
+          return prev.map((p) => fresh.find((f) => f.id === p.id) || p);
+        });
+      } catch {
+        // silently ignore poll errors
+      }
+    }, 10_000);
+  }
+
+  // ── Order status update ───────────────────────────────────────────────
+
   async function handleUpdateOrderStatus(orderId: string, newStatus: OrderStatus) {
     setUpdatingOrder(orderId);
     try {
       await updateOrderStatus(orderId, newStatus);
-      setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
-      );
     } catch {
-      // Demo mode: update locally
+      // demo mode — continue with local update
+    } finally {
       setOrders((prev) =>
         prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
       );
-    } finally {
       setUpdatingOrder(null);
     }
   }
 
+  async function handleMarkPaid(orderId: string) {
+    setUpdatingOrder(orderId);
+    try {
+      await markOrderPaid(orderId);
+    } catch {
+      // demo mode
+    } finally {
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, paymentStatus: 'PAID' } : o))
+      );
+      setUpdatingOrder(null);
+    }
+  }
+
+  // ── Menu toggle ───────────────────────────────────────────────────────
+
   async function handleToggleItem(itemId: string, available: boolean) {
     try {
       await toggleMenuItemAvailability(itemId, vendorId, !available);
-      setMenu((prev) =>
-        prev.map((item) =>
-          item.id === itemId ? { ...item, available: !available } : item
-        )
-      );
     } catch {
+      // demo mode
+    } finally {
       setMenu((prev) =>
         prev.map((item) =>
           item.id === itemId ? { ...item, available: !available } : item
@@ -119,11 +229,16 @@ export function VendorDashboard() {
     }
   }
 
+  // ── Derived state ─────────────────────────────────────────────────────
+
   const activeOrders = orders.filter((o) => !['COMPLETED', 'CANCELLED'].includes(o.status));
   const pastOrders = orders.filter((o) => ['COMPLETED', 'CANCELLED'].includes(o.status));
 
+  // ── Render ────────────────────────────────────────────────────────────
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 pb-24 md:pb-6">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold">Vendor Dashboard</h1>
@@ -132,10 +247,19 @@ export function VendorDashboard() {
         <button
           onClick={() => navigate('/vendor/settings')}
           className="p-2 text-stone-500 hover:text-stone-800"
+          aria-label="Settings"
         >
           <Settings size={20} />
         </button>
       </div>
+
+      {/* New order alert banner */}
+      {newOrderAlert && (
+        <div className="flex items-center gap-2 bg-kasi-orange text-white rounded-xl px-4 py-3 mb-4 text-sm font-semibold animate-pulse">
+          <Bell size={16} />
+          {newOrderAlert}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-6">
@@ -143,27 +267,34 @@ export function VendorDashboard() {
         <StatCard label="Menu Items" value={menu.length} color="text-kasi-green" />
         <StatCard
           label="Today's Orders"
-          value={orders.filter((o) => {
-            const today = new Date().toDateString();
-            return new Date(o.createdAt).toDateString() === today;
-          }).length}
+          value={
+            orders.filter((o) => {
+              const today = new Date().toDateString();
+              return new Date(o.createdAt).toDateString() === today;
+            }).length
+          }
           color="text-blue-600"
         />
       </div>
 
       {/* Tabs */}
       <div className="flex bg-stone-100 rounded-xl p-1 mb-5">
-        {(['orders', 'menu'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors capitalize ${
-              tab === t ? 'bg-white shadow-sm text-stone-900' : 'text-stone-500'
-            }`}
-          >
-            {t === 'orders' ? `Orders (${activeOrders.length})` : `Menu (${menu.length})`}
-          </button>
-        ))}
+        <TabButton
+          label={`Orders (${activeOrders.length})`}
+          active={tab === 'orders'}
+          onClick={() => setTab('orders')}
+        />
+        <TabButton
+          label={`Menu (${menu.length})`}
+          active={tab === 'menu'}
+          onClick={() => setTab('menu')}
+        />
+        <TabButton
+          label="Add Order"
+          active={tab === 'add'}
+          onClick={() => setTab('add')}
+          icon={<Package size={14} className="mr-1" />}
+        />
       </div>
 
       {loading ? (
@@ -178,6 +309,7 @@ export function VendorDashboard() {
                 key={order.id}
                 order={order}
                 onUpdateStatus={handleUpdateOrderStatus}
+                onMarkPaid={handleMarkPaid}
                 updating={updatingOrder === order.id}
               />
             ))
@@ -191,13 +323,14 @@ export function VendorDashboard() {
                   key={order.id}
                   order={order}
                   onUpdateStatus={handleUpdateOrderStatus}
+                  onMarkPaid={handleMarkPaid}
                   updating={updatingOrder === order.id}
                 />
               ))}
             </>
           )}
         </div>
-      ) : (
+      ) : tab === 'menu' ? (
         <div>
           <div className="flex justify-end mb-4">
             <Button onClick={() => navigate('/vendor/menu/new')} size="sm">
@@ -216,8 +349,43 @@ export function VendorDashboard() {
             ))}
           </div>
         </div>
+      ) : (
+        <ManualOrderForm
+          vendorId={vendorId}
+          menu={menu}
+          onOrderCreated={(order) => {
+            setOrders((prev) => [order, ...prev]);
+            setTab('orders');
+          }}
+        />
       )}
     </div>
+  );
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────
+
+function TabButton({
+  label,
+  active,
+  onClick,
+  icon,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center ${
+        active ? 'bg-white shadow-sm text-stone-900' : 'text-stone-500'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }
 
@@ -233,13 +401,20 @@ function StatCard({ label, value, color }: { label: string; value: number; color
 function VendorOrderCard({
   order,
   onUpdateStatus,
+  onMarkPaid,
   updating,
 }: {
   order: Order;
   onUpdateStatus: (id: string, status: OrderStatus) => void;
+  onMarkPaid: (id: string) => void;
   updating: boolean;
 }) {
   const nextStatus = NEXT_STATUS[order.status];
+  const isPaid = order.paymentStatus === 'PAID';
+  const isCashOrder =
+    order.paymentMethod === 'CASH_ON_DELIVERY' ||
+    order.paymentMethod === 'CASH_ON_PICKUP' ||
+    order.paymentMethod === 'EFT';
 
   return (
     <div className="bg-white rounded-xl border border-stone-100 p-4">
@@ -247,6 +422,11 @@ function VendorOrderCard({
         <div>
           <div className="font-semibold text-stone-900 text-sm">
             #{order.id.slice(-6).toUpperCase()}
+            {order.source === 'WHATSAPP' && (
+              <span className="ml-2 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                WhatsApp
+              </span>
+            )}
           </div>
           <div className="text-stone-500 text-xs mt-0.5">
             {order.guestDetails
@@ -260,44 +440,67 @@ function VendorOrderCard({
         <OrderStatusBadge status={order.status} />
       </div>
 
-      <div className="mt-2 text-sm text-stone-600 flex gap-4">
+      <div className="mt-2 text-sm text-stone-600 flex gap-4 flex-wrap">
         <span>{order.deliveryMethod === 'PICKUP' ? '🏪 Pickup' : '🚚 Delivery'}</span>
-        <span>{order.paymentMethod === 'DIGITAL' ? '💳 Digital' : '💵 Cash'}</span>
+        <span>
+          {order.paymentMethod === 'DIGITAL'
+            ? '💳 Digital'
+            : order.paymentMethod === 'EFT'
+            ? '🏦 EFT'
+            : '💵 Cash'}
+        </span>
         <span className="font-bold text-kasi-orange">R{order.totalAmount.toFixed(2)}</span>
+        {isPaid && (
+          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">
+            Paid ✓
+          </span>
+        )}
       </div>
 
       {/* Items */}
       {order.items && order.items.length > 0 && (
         <div className="mt-2 text-xs text-stone-500 space-y-0.5">
           {order.items.map((item) => (
-            <div key={item.id}>• {item.name} × {item.quantity}</div>
+            <div key={item.id}>
+              • {item.name} × {item.quantity}
+            </div>
           ))}
         </div>
       )}
 
       {/* Actions */}
-      {nextStatus && (
-        <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex gap-2 flex-wrap">
+        {nextStatus && (
           <Button
             size="sm"
             onClick={() => onUpdateStatus(order.id, nextStatus)}
             loading={updating}
             className="flex-1"
           >
-            Mark as {nextStatus.replace('_', ' ')}
+            Mark as {nextStatus.replace(/_/g, ' ')}
           </Button>
-          {order.status === 'PENDING' && (
-            <Button
-              size="sm"
-              variant="danger"
-              onClick={() => onUpdateStatus(order.id, 'CANCELLED')}
-              loading={updating}
-            >
-              Reject
-            </Button>
-          )}
-        </div>
-      )}
+        )}
+        {isCashOrder && !isPaid && order.status !== 'CANCELLED' && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => onMarkPaid(order.id)}
+            loading={updating}
+          >
+            Mark Paid
+          </Button>
+        )}
+        {order.status === 'PENDING' && (
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => onUpdateStatus(order.id, 'CANCELLED')}
+            loading={updating}
+          >
+            Reject
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -323,12 +526,277 @@ function VendorMenuItem({
       </div>
       <div className="flex items-center gap-2">
         <button onClick={onToggle} className="text-stone-400 hover:text-stone-800">
-          {item.available
-            ? <ToggleRight size={24} className="text-kasi-green" />
-            : <ToggleLeft size={24} />}
+          {item.available ? (
+            <ToggleRight size={24} className="text-kasi-green" />
+          ) : (
+            <ToggleLeft size={24} />
+          )}
         </button>
-        <Button size="sm" variant="secondary" onClick={onEdit}>Edit</Button>
+        <Button size="sm" variant="secondary" onClick={onEdit}>
+          Edit
+        </Button>
       </div>
     </div>
   );
 }
+
+// ── Manual Order Form ──────────────────────────────────────────────────────
+
+interface CartLine {
+  menuItemId: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+function ManualOrderForm({
+  vendorId,
+  menu,
+  onOrderCreated,
+}: {
+  vendorId: string;
+  menu: MenuItem[];
+  onOrderCreated: (order: Order) => void;
+}) {
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [deliveryMethod, setDeliveryMethod] = useState<'PICKUP' | 'DELIVERY'>('PICKUP');
+  const [paymentMethod, setPaymentMethod] = useState<string>('CASH_ON_PICKUP');
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [selectedItemId, setSelectedItemId] = useState(menu[0]?.id || '');
+  const [quantity, setQuantity] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const availableMenu = menu.filter((m) => m.available);
+
+  function addToCart() {
+    const item = availableMenu.find((m) => m.id === selectedItemId);
+    if (!item) return;
+    setCart((prev) => {
+      const existing = prev.find((c) => c.menuItemId === item.id);
+      if (existing) {
+        return prev.map((c) =>
+          c.menuItemId === item.id ? { ...c, quantity: c.quantity + quantity } : c
+        );
+      }
+      return [...prev, { menuItemId: item.id, name: item.name, price: item.price, quantity }];
+    });
+  }
+
+  function removeFromCart(menuItemId: string) {
+    setCart((prev) => prev.filter((c) => c.menuItemId !== menuItemId));
+  }
+
+  const total = cart.reduce((s, c) => s + c.price * c.quantity, 0);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+
+    if (!customerName.trim()) {
+      setError('Customer name is required.');
+      return;
+    }
+    if (!customerPhone.trim()) {
+      setError('Customer phone is required.');
+      return;
+    }
+    if (cart.length === 0) {
+      setError('Please add at least one item.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const order = await createOrder({
+        guestDetails: { name: customerName.trim(), phone: customerPhone.trim() },
+        vendorId,
+        deliveryMethod,
+        paymentMethod,
+        contactPhone: customerPhone.trim(),
+        items: cart,
+      });
+      onOrderCreated(order);
+    } catch {
+      // Demo mode — create a local order object
+      const demoOrder: Order = {
+        id: `manual-${Date.now()}`,
+        vendorId,
+        guestDetails: { name: customerName.trim(), phone: customerPhone.trim() },
+        status: 'PENDING',
+        deliveryMethod,
+        deliveryFee: 0,
+        subtotal: total,
+        totalAmount: total,
+        paymentMethod: paymentMethod as Order['paymentMethod'],
+        contactPhone: customerPhone.trim(),
+        source: 'MANUAL',
+        items: cart.map((c, i) => ({
+          id: `item-${i}`,
+          orderId: 'demo',
+          menuItemId: c.menuItemId,
+          name: c.name,
+          price: c.price,
+          quantity: c.quantity,
+        })),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      onOrderCreated(demoOrder);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="bg-white rounded-xl border border-stone-100 p-4 space-y-3">
+        <h3 className="font-semibold text-stone-800 text-sm uppercase tracking-wide">
+          Customer Details
+        </h3>
+        <Input
+          label="Customer name"
+          value={customerName}
+          onChange={(e) => setCustomerName(e.target.value)}
+          placeholder="e.g. Sipho Mokoena"
+          required
+        />
+        <Input
+          label="Customer phone"
+          value={customerPhone}
+          onChange={(e) => setCustomerPhone(e.target.value)}
+          placeholder="+27 72 000 0000"
+          type="tel"
+          required
+        />
+      </div>
+
+      <div className="bg-white rounded-xl border border-stone-100 p-4 space-y-3">
+        <h3 className="font-semibold text-stone-800 text-sm uppercase tracking-wide">
+          Add Items
+        </h3>
+        {availableMenu.length === 0 ? (
+          <p className="text-stone-400 text-sm">No available menu items.</p>
+        ) : (
+          <div className="flex gap-2 items-end">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-stone-700 mb-1">Item</label>
+              <select
+                value={selectedItemId}
+                onChange={(e) => setSelectedItemId(e.target.value)}
+                className="w-full border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-kasi-orange bg-white text-sm"
+              >
+                {availableMenu.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} — R{item.price.toFixed(2)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="w-20">
+              <label className="block text-sm font-medium text-stone-700 mb-1">Qty</label>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-full border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-kasi-orange text-sm"
+              />
+            </div>
+            <Button type="button" size="sm" variant="secondary" onClick={addToCart}>
+              Add
+            </Button>
+          </div>
+        )}
+
+        {/* Cart lines */}
+        {cart.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {cart.map((line) => (
+              <div
+                key={line.menuItemId}
+                className="flex items-center justify-between text-sm text-stone-700"
+              >
+                <span>
+                  {line.name} ×{line.quantity}
+                </span>
+                <div className="flex items-center gap-3">
+                  <span className="font-semibold">
+                    R{(line.price * line.quantity).toFixed(2)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFromCart(line.menuItemId)}
+                    className="text-red-400 hover:text-red-600 text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div className="border-t border-stone-100 pt-2 mt-2 flex justify-between font-bold text-stone-900">
+              <span>Total</span>
+              <span className="text-kasi-orange">R{total.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl border border-stone-100 p-4 space-y-3">
+        <h3 className="font-semibold text-stone-800 text-sm uppercase tracking-wide">
+          Order Options
+        </h3>
+        <div>
+          <label className="block text-sm font-medium text-stone-700 mb-1">
+            Delivery method
+          </label>
+          <div className="flex gap-2">
+            {(['PICKUP', 'DELIVERY'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => {
+                  setDeliveryMethod(m);
+                  setPaymentMethod(m === 'PICKUP' ? 'CASH_ON_PICKUP' : 'CASH_ON_DELIVERY');
+                }}
+                className={`flex-1 py-2 text-sm rounded-lg border font-semibold transition-colors ${
+                  deliveryMethod === m
+                    ? 'border-kasi-orange bg-orange-50 text-kasi-orange'
+                    : 'border-stone-200 text-stone-500'
+                }`}
+              >
+                {m === 'PICKUP' ? '🏪 Pickup' : '🚚 Delivery'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-stone-700 mb-1">
+            Payment method
+          </label>
+          <select
+            value={paymentMethod}
+            onChange={(e) => setPaymentMethod(e.target.value)}
+            className="w-full border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-kasi-orange bg-white text-sm"
+          >
+            <option value="CASH_ON_PICKUP">💵 Cash on pickup</option>
+            <option value="CASH_ON_DELIVERY">🚚 Cash on delivery</option>
+            <option value="EFT">🏦 EFT</option>
+            <option value="DIGITAL">💳 Digital payment</option>
+          </select>
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+      )}
+
+      <Button type="submit" size="lg" className="w-full" loading={submitting}>
+        Create Order
+      </Button>
+    </form>
+  );
+}
+
