@@ -15,7 +15,7 @@ import { LoadingSpinner } from '../../components/ui/Card';
 import { OrderStatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import type { MenuItem, Order, OrderStatus } from '../../types';
+import type { MenuItem, Order, OrderStatus, OrderSource } from '../../types';
 
 // ── Demo data ──────────────────────────────────────────────────────────────
 
@@ -631,7 +631,7 @@ function ManualOrderForm({
         totalAmount: total,
         paymentMethod: paymentMethod as Order['paymentMethod'],
         contactPhone: customerPhone.trim(),
-        source: 'MANUAL',
+        source: 'MANUAL' as OrderSource,
         items: cart.map((c, i) => ({
           id: `item-${i}`,
           orderId: 'demo',

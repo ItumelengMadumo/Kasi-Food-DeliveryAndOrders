@@ -225,14 +225,37 @@ async function getVendorMenu(vendorId) {
 
 /**
  * Write a new order (metadata + items) to DynamoDB using a transaction.
+ * Calculates delivery fee and platform fee consistent with createOrder Lambda.
  */
 async function createOrderInDb(vendorId, customerPhone, customerName, cart, paymentMethod, vendor) {
   const orderId = crypto.randomUUID();
   const now = new Date().toISOString();
+  const isDelivery = paymentMethod === 'CASH_ON_DELIVERY';
+  const deliveryMethod = isDelivery ? 'DELIVERY' : 'PICKUP';
+
   const subtotal = parseFloat(
     cart.reduce((s, i) => s + i.price * i.quantity, 0).toFixed(2)
   );
-  const isDelivery = paymentMethod === 'CASH_ON_DELIVERY';
+
+  // Calculate delivery fee using vendor's configured rate (mirrors calculateDelivery Lambda)
+  let deliveryFee = 0;
+  if (deliveryMethod === 'DELIVERY') {
+    const { deliveryType, deliveryValue } = vendor;
+    if (deliveryType === 'PERCENTAGE' && deliveryValue != null) {
+      deliveryFee = parseFloat(((deliveryValue / 100) * subtotal).toFixed(2));
+    } else if (deliveryType === 'FLAT' && deliveryValue != null) {
+      deliveryFee = parseFloat(Number(deliveryValue).toFixed(2));
+    }
+  }
+
+  // Calculate platform fee (mirrors createOrder Lambda)
+  const PLATFORM_COMMISSION_RATE = parseFloat(process.env.PLATFORM_COMMISSION_RATE || '0.10');
+  const ADMIN_FEE_NON_BANKED = parseFloat(process.env.ADMIN_FEE_NON_BANKED || '5.00');
+  const platformFee = vendor.hasBankAccount
+    ? parseFloat((subtotal * PLATFORM_COMMISSION_RATE).toFixed(2))
+    : ADMIN_FEE_NON_BANKED;
+
+  const totalAmount = parseFloat((subtotal + deliveryFee).toFixed(2));
 
   const transactItems = [
     {
@@ -248,11 +271,11 @@ async function createOrderInDb(vendorId, customerPhone, customerName, cart, paym
           guestDetails: { name: customerName, phone: customerPhone },
           vendorId,
           status: 'PENDING',
-          deliveryMethod: isDelivery ? 'DELIVERY' : 'PICKUP',
-          deliveryFee: 0,
+          deliveryMethod,
+          deliveryFee,
           subtotal,
-          totalAmount: subtotal,
-          platformFee: 0,
+          totalAmount,
+          platformFee,
           paymentMethod,
           paymentStatus: 'PENDING',
           contactPhone: customerPhone,

@@ -103,6 +103,8 @@ export interface OrderItem {
   quantity: number;
 }
 
+export type OrderSource = 'WEB' | 'WHATSAPP' | 'MANUAL';
+
 export interface Order {
   id: string;
   customerId?: string;
@@ -118,7 +120,7 @@ export interface Order {
   paymentStatus?: string;
   contactPhone: string;
   specialInstructions?: string;
-  source?: string;
+  source?: OrderSource;
   items?: OrderItem[];
   createdAt: string;
   updatedAt: string;
