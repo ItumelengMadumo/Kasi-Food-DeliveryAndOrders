@@ -7,7 +7,8 @@
     { "AttributeName": "GSI1PK", "AttributeType": "S" },
     { "AttributeName": "GSI1SK", "AttributeType": "S" },
     { "AttributeName": "GSI2PK", "AttributeType": "S" },
-    { "AttributeName": "GSI2SK", "AttributeType": "S" }
+    { "AttributeName": "GSI2SK", "AttributeType": "S" },
+    { "AttributeName": "GSI3PK", "AttributeType": "S" }
   ],
   "KeySchema": [
     { "AttributeName": "PK", "KeyType": "HASH" },
@@ -29,8 +30,19 @@
         { "AttributeName": "GSI2SK", "KeyType": "RANGE" }
       ],
       "Projection": { "ProjectionType": "ALL" }
+    },
+    {
+      "IndexName": "GSI3-VendorByWhatsApp",
+      "KeySchema": [
+        { "AttributeName": "GSI3PK", "KeyType": "HASH" }
+      ],
+      "Projection": { "ProjectionType": "ALL" }
     }
   ],
+  "TimeToLiveSpecification": {
+    "AttributeName": "expiresAt",
+    "Enabled": true
+  },
   "Tags": [
     { "Key": "Project", "Value": "KasiFoodDelivery" },
     { "Key": "Environment", "Value": "production" }
@@ -44,19 +56,21 @@
     "Vendor": {
       "PK": "VENDOR#<vendorId>",
       "SK": "PROFILE",
+      "GSI3PK": "<whatsappNumber>",
       "attributes": [
         "ownerId", "name", "address", "location", "contactDetails",
         "workingHours", "status", "deliveryType", "deliveryValue",
-        "hasBankAccount", "bankDetails", "imageUrl", "description",
-        "rating", "totalReviews", "createdAt"
-      ]
+        "hasBankAccount", "bankDetails", "whatsappNumber",
+        "imageUrl", "description", "rating", "totalReviews", "createdAt"
+      ],
+      "_note": "Set GSI3PK = whatsappNumber when whatsappNumber is present to enable O(1) lookup by WhatsApp number"
     },
     "VendorApplication": {
       "PK": "APPLICATION#<applicationId>",
       "SK": "PROFILE",
       "attributes": [
         "applicantName", "phone", "email", "businessName", "address",
-        "description", "hasBankAccount", "status", "createdAt"
+        "description", "hasBankAccount", "whatsappNumber", "status", "createdAt"
       ]
     },
     "MenuItem": {
@@ -74,13 +88,25 @@
       "attributes": [
         "customerId", "guestDetails", "vendorId", "status",
         "deliveryMethod", "deliveryFee", "subtotal", "totalAmount",
-        "paymentMethod", "contactPhone", "specialInstructions", "createdAt", "updatedAt"
+        "paymentMethod", "paymentStatus", "contactPhone",
+        "specialInstructions", "source", "createdAt", "updatedAt"
       ]
     },
     "OrderItem": {
       "PK": "ORDER#<orderId>",
       "SK": "ITEM#<itemId>",
       "attributes": ["menuItemId", "name", "price", "quantity"]
+    },
+    "Session": {
+      "PK": "SESSION#<customerPhone>",
+      "SK": "VENDOR#<vendorId>",
+      "TTL": "expiresAt",
+      "attributes": [
+        "currentStep", "cart", "menuContext", "customerName",
+        "expiresAt", "updatedAt"
+      ],
+      "_steps": ["START", "SELECTING_ITEMS", "CONFIRM_ORDER", "PAYMENT", "DONE"],
+      "_note": "expiresAt is a Unix timestamp (seconds). Sessions expire 30 minutes after last activity via DynamoDB TTL."
     },
     "Review": {
       "PK": "VENDOR#<vendorId>",
