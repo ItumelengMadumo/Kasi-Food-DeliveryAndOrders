@@ -1,24 +1,32 @@
-// AppSync JS Resolver — Query.getVendor
-// Fetches a single vendor by ID from DynamoDB
+// AppSync JS Resolver — Query.getVendorByWhatsApp
+// Finds a vendor by WhatsApp number using GSI3-VendorByWhatsApp.
+// Returns null if no vendor is registered with that number.
 
 import { util } from '@aws-appsync/utils';
 
 export function request(ctx) {
-  const { vendorId } = ctx.args;
+  const { whatsappNumber } = ctx.args;
+
   return {
-    operation: 'GetItem',
-    key: {
-      PK: util.dynamodb.toDynamoDB(`VENDOR#${vendorId}`),
-      SK: util.dynamodb.toDynamoDB('PROFILE'),
+    operation: 'Query',
+    index: 'GSI3-VendorByWhatsApp',
+    query: {
+      expression: 'GSI3PK = :wn',
+      expressionValues: {
+        ':wn': util.dynamodb.toDynamoDB(whatsappNumber),
+      },
     },
+    limit: 1,
   };
 }
 
 export function response(ctx) {
   if (ctx.error) util.error(ctx.error.message, ctx.error.type);
-  if (!ctx.result) return null;
 
-  const item = ctx.result;
+  const items = ctx.result.items || [];
+  if (items.length === 0) return null;
+
+  const item = items[0];
   return {
     id: item.vendorId || item.PK.replace('VENDOR#', ''),
     ownerId: item.ownerId,
@@ -31,7 +39,7 @@ export function response(ctx) {
     deliveryType: item.deliveryType,
     deliveryValue: item.deliveryValue,
     hasBankAccount: item.hasBankAccount,
-    whatsappNumber: item.whatsappNumber || null,
+    whatsappNumber: item.GSI3PK || item.whatsappNumber || null,
     imageUrl: item.imageUrl,
     description: item.description,
     rating: item.rating,

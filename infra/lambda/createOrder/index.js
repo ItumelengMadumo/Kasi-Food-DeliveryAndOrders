@@ -9,6 +9,7 @@
  *   - Delivery fee calculation
  *   - Order creation in DynamoDB
  *   - Admin fee tracking for non-banked vendors
+ *   - Async WhatsApp notification to the vendor
  */
 
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
@@ -18,14 +19,17 @@ const {
   GetCommand,
   TransactWriteCommand,
 } = require('@aws-sdk/lib-dynamodb');
+const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const { v4: uuidv4 } = require('uuid');
 
 const client = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(client);
+const lambdaClient = new LambdaClient({});
 
 const TABLE_NAME = process.env.TABLE_NAME || 'KasiMainTable';
 const PLATFORM_COMMISSION_RATE = parseFloat(process.env.PLATFORM_COMMISSION_RATE || '0.10'); // 10%
 const ADMIN_FEE_NON_BANKED = parseFloat(process.env.ADMIN_FEE_NON_BANKED || '5.00'); // R5 per order
+const NOTIFICATION_LAMBDA_ARN = process.env.NOTIFICATION_LAMBDA_ARN || '';
 
 /**
  * Calculate delivery fee based on vendor settings.
@@ -178,6 +182,32 @@ exports.handler = async (event) => {
   await ddb.send(new TransactWriteCommand({ TransactItems: transactItems }));
 
   console.log(`Order ${orderId} created successfully`);
+
+  // Fire-and-forget: notify the vendor via WhatsApp (does not block order response)
+  if (NOTIFICATION_LAMBDA_ARN) {
+    try {
+      await lambdaClient.send(
+        new InvokeCommand({
+          FunctionName: NOTIFICATION_LAMBDA_ARN,
+          InvocationType: 'Event', // async, non-blocking
+          Payload: JSON.stringify({
+            vendorId,
+            orderId,
+            orderItems: items.map((i) => ({
+              name: i.name,
+              quantity: i.quantity,
+              price: i.price,
+            })),
+            totalAmount,
+            customerName: guestDetails?.name || null,
+          }),
+        })
+      );
+    } catch (notifErr) {
+      // Never fail the order because a notification could not be sent
+      console.warn('Failed to invoke sendWhatsAppNotification:', notifErr.message);
+    }
+  }
 
   return {
     id: orderId,

@@ -98,6 +98,7 @@ type Vendor {
   deliveryType: DeliveryType
   deliveryValue: Float
   hasBankAccount: Boolean!
+  whatsappNumber: String
   imageUrl: String
   description: String
   rating: Float
@@ -164,6 +165,7 @@ type VendorApplication {
   address: String!
   description: String
   hasBankAccount: Boolean!
+  whatsappNumber: String
   status: VendorStatus!
   createdAt: AWSDateTime!
 }
@@ -190,6 +192,7 @@ input CreateVendorApplicationInput {
   address: String!
   description: String
   hasBankAccount: Boolean!
+  whatsappNumber: String
 }
 
 input UpdateVendorProfileInput {
@@ -201,6 +204,7 @@ input UpdateVendorProfileInput {
   deliveryType: DeliveryType
   deliveryValue: Float
   hasBankAccount: Boolean
+  whatsappNumber: String
   description: String
   imageUrl: String
 }
@@ -270,6 +274,7 @@ type Query {
   getVendor(vendorId: ID!): Vendor
   getAllVendors(status: VendorStatus): [Vendor!]!
   getVendorMenu(vendorId: ID!): [MenuItem!]!
+  getVendorByWhatsApp(whatsappNumber: String!): Vendor
 
   # Order queries
   getOrder(orderId: ID!): Order
@@ -314,6 +319,7 @@ type Mutation {
   createOrder(input: CreateOrderInput!): Order!
   updateOrderStatus(input: UpdateOrderStatusInput!): Order!
   cancelOrder(orderId: ID!, reason: String): Order!
+  markOrderPaid(orderId: ID!): Order!
 
   # Reviews
   createReview(input: CreateReviewInput!): Review!

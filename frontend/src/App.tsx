@@ -10,6 +10,7 @@ import { OrdersScreen } from './screens/Orders/OrdersScreen';
 import { AuthScreen } from './modules/auth/AuthScreen';
 import { VendorDashboard } from './screens/Vendor/VendorDashboard';
 import { VendorApplyScreen } from './screens/Vendor/VendorApplyScreen';
+import { VendorSettings } from './screens/Vendor/VendorSettings';
 import { AdminDashboard } from './screens/Admin/AdminDashboard';
 import { useAuthStore } from './state/authStore';
 
@@ -45,6 +46,14 @@ function App() {
             element={
               <ProtectedRoute roles={['VENDOR', 'ADMIN']}>
                 <VendorDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/vendor/settings"
+            element={
+              <ProtectedRoute roles={['VENDOR', 'ADMIN']}>
+                <VendorSettings />
               </ProtectedRoute>
             }
           />
