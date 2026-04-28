@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusCircle, Package, Settings, ToggleLeft, ToggleRight, Bell } from 'lucide-react';
+import { PlusCircle, Package, Settings, ToggleLeft, ToggleRight, Bell, Wallet, PencilLine, BarChart3 } from 'lucide-react';
 import { useAuthStore } from '../../state/authStore';
 import {
   getVendorMenu,
@@ -66,7 +66,7 @@ export function VendorDashboard() {
   const { user } = useAuthStore();
   const vendorId = user?.id ? `vendor_${user.id}` : DEMO_VENDOR_ID;
 
-  const [tab, setTab] = useState<'orders' | 'menu' | 'add'>('orders');
+  const [tab, setTab] = useState<'overview' | 'orders' | 'menu' | 'add'>('overview');
   const [orders, setOrders] = useState<Order[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -233,6 +233,12 @@ export function VendorDashboard() {
 
   const activeOrders = orders.filter((o) => !['COMPLETED', 'CANCELLED'].includes(o.status));
   const pastOrders = orders.filter((o) => ['COMPLETED', 'CANCELLED'].includes(o.status));
+  const completedOrders = orders.filter((o) => o.status === 'COMPLETED');
+  const totalRevenue = orders.reduce((sum, order) => sum + order.totalAmount, 0);
+  const todayOrders = orders.filter((o) => {
+    const today = new Date().toDateString();
+    return new Date(o.createdAt).toDateString() === today;
+  });
 
   // ── Render ────────────────────────────────────────────────────────────
 
@@ -280,7 +286,13 @@ export function VendorDashboard() {
       {/* Tabs */}
       <div className="flex bg-stone-100 rounded-xl p-1 mb-5">
         <TabButton
-          label={`Orders (${activeOrders.length})`}
+          label="Overview"
+          active={tab === 'overview'}
+          onClick={() => setTab('overview')}
+          icon={<BarChart3 size={14} className="mr-1" />}
+        />
+        <TabButton
+          label={`Incoming (${activeOrders.length})`}
           active={tab === 'orders'}
           onClick={() => setTab('orders')}
         />
@@ -299,6 +311,85 @@ export function VendorDashboard() {
 
       {loading ? (
         <LoadingSpinner className="py-10" />
+      ) : tab === 'overview' ? (
+        <div className="space-y-5">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard title="Incoming Orders" value={activeOrders.length} hint="Orders needing action right now" icon={<Package size={18} />} />
+            <MetricCard title="Completed Orders" value={completedOrders.length} hint="Finished orders recorded in your dashboard" icon={<BarChart3 size={18} />} />
+            <MetricCard title="Today's Orders" value={todayOrders.length} hint="Orders placed today" icon={<Bell size={18} />} />
+            <MetricCard title="Revenue" value={`R${totalRevenue.toFixed(0)}`} hint="Based on tracked order totals" icon={<Wallet size={18} />} />
+          </section>
+
+          <section className="grid gap-4 lg:grid-cols-3">
+            <QuickActionCard
+              title="Manage Orders"
+              description="Review incoming orders, update statuses, and check completed orders."
+              buttonLabel="Open Orders"
+              onClick={() => setTab('orders')}
+            />
+            <QuickActionCard
+              title="Amend Menu and Pricing"
+              description="Open your menu list, edit item pricing, and add new products quickly."
+              buttonLabel="Open Menu"
+              onClick={() => setTab('menu')}
+            />
+            <QuickActionCard
+              title="Contact and Banking Details"
+              description="Maintain phone, WhatsApp, delivery, and payout information in settings."
+              buttonLabel="Open Settings"
+              onClick={() => navigate('/vendor/settings')}
+            />
+          </section>
+
+          <section className="grid gap-4 lg:grid-cols-2">
+            <div className="bg-white rounded-xl border border-stone-100 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-stone-900">Recent Incoming Orders</h3>
+                  <p className="text-sm text-stone-500">The latest orders waiting for attention</p>
+                </div>
+                <Button size="sm" variant="secondary" onClick={() => setTab('orders')}>
+                  View All
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {activeOrders.length === 0 ? (
+                  <p className="text-sm text-stone-400 py-4">No incoming orders right now.</p>
+                ) : (
+                  activeOrders.slice(0, 3).map((order) => (
+                    <CompactOrderRow key={order.id} order={order} />
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-stone-100 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-stone-900">Menu and Pricing</h3>
+                  <p className="text-sm text-stone-500">Fast access to amend items and pricing</p>
+                </div>
+                <Button size="sm" onClick={() => navigate('/vendor/menu/new')}>
+                  <PlusCircle size={14} className="mr-1.5" />
+                  Add Item
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {menu.length === 0 ? (
+                  <p className="text-sm text-stone-400 py-4">No menu items yet.</p>
+                ) : (
+                  menu.slice(0, 4).map((item) => (
+                    <CompactMenuRow
+                      key={item.id}
+                      item={item}
+                      onEdit={() => navigate(`/vendor/menu/${item.id}/edit`)}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
       ) : tab === 'orders' ? (
         <div className="space-y-4">
           {activeOrders.length === 0 ? (
@@ -317,7 +408,7 @@ export function VendorDashboard() {
 
           {pastOrders.length > 0 && (
             <>
-              <h3 className="text-sm font-semibold text-stone-500 mt-6">Past Orders</h3>
+              <h3 className="text-sm font-semibold text-stone-500 mt-6">Completed and Past Orders</h3>
               {pastOrders.slice(0, 5).map((order) => (
                 <VendorOrderCard
                   key={order.id}
@@ -394,6 +485,96 @@ function StatCard({ label, value, color }: { label: string; value: number; color
     <div className="bg-white rounded-xl border border-stone-100 p-3 text-center">
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
       <div className="text-xs text-stone-500 mt-0.5">{label}</div>
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  hint,
+  icon,
+}: {
+  title: string;
+  value: number | string;
+  hint: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-stone-100 p-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-semibold text-stone-500">{title}</div>
+        <div className="text-kasi-orange">{icon}</div>
+      </div>
+      <div className="mt-3 text-3xl font-bold text-stone-900">{value}</div>
+      <p className="mt-1 text-xs text-stone-500">{hint}</p>
+    </div>
+  );
+}
+
+function QuickActionCard({
+  title,
+  description,
+  buttonLabel,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  buttonLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-stone-100 p-4">
+      <h3 className="font-semibold text-stone-900">{title}</h3>
+      <p className="mt-1 text-sm text-stone-500">{description}</p>
+      <Button size="sm" className="mt-4" onClick={onClick}>
+        {buttonLabel}
+      </Button>
+    </div>
+  );
+}
+
+function CompactOrderRow({ order }: { order: Order }) {
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-3 py-3">
+      <div>
+        <div className="font-semibold text-sm text-stone-900">
+          #{order.id.slice(-6).toUpperCase()} • {order.guestDetails?.name || 'Customer'}
+        </div>
+        <div className="text-xs text-stone-500 mt-0.5">
+          {order.deliveryMethod === 'PICKUP' ? 'Pickup' : 'Delivery'} • {new Date(order.createdAt).toLocaleTimeString('en-ZA', { timeStyle: 'short' })}
+        </div>
+      </div>
+      <div className="text-right">
+        <div className="font-semibold text-kasi-orange">R{order.totalAmount.toFixed(2)}</div>
+        <div className="text-xs text-stone-500">{order.status.replace(/_/g, ' ')}</div>
+      </div>
+    </div>
+  );
+}
+
+function CompactMenuRow({
+  item,
+  onEdit,
+}: {
+  item: MenuItem;
+  onEdit: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-3 py-3">
+      <div>
+        <div className="font-semibold text-sm text-stone-900">{item.name}</div>
+        <div className="text-xs text-stone-500 mt-0.5">
+          {item.category || 'Uncategorised'} • {item.available ? 'Visible' : 'Hidden'}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="font-semibold text-kasi-orange">R{item.price.toFixed(2)}</div>
+        <Button size="sm" variant="secondary" onClick={onEdit}>
+          <PencilLine size={14} className="mr-1" />
+          Edit
+        </Button>
+      </div>
     </div>
   );
 }

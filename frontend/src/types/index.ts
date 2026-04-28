@@ -70,6 +70,7 @@ export interface Vendor {
   location?: Location;
   contactDetails?: string;
   workingHours?: WorkingHours;
+  bankDetails?: BankDetails;
   status: VendorStatus;
   deliveryType?: DeliveryType;
   deliveryValue?: number;

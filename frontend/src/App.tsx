@@ -10,6 +10,7 @@ import { OrdersScreen } from './screens/Orders/OrdersScreen';
 import { AuthScreen } from './modules/auth/AuthScreen';
 import { VendorDashboard } from './screens/Vendor/VendorDashboard';
 import { VendorApplyScreen } from './screens/Vendor/VendorApplyScreen';
+import { VendorMenuEditorScreen } from './screens/Vendor/VendorMenuEditorScreen';
 import { VendorSettings } from './screens/Vendor/VendorSettings';
 import { AdminDashboard } from './screens/Admin/AdminDashboard';
 import { useAuthStore } from './state/authStore';
@@ -29,7 +30,7 @@ function App() {
         <Navbar />
         <Routes>
           {/* Customer routes */}
-          <Route path="/" element={<HomeScreen />} />
+          <Route path="/" element={<HomeRoute />} />
           <Route path="/vendor/:vendorId" element={<VendorDetailsScreen />} />
           <Route path="/cart" element={<CartScreen />} />
           <Route path="/checkout" element={<CheckoutScreen />} />
@@ -37,7 +38,7 @@ function App() {
           <Route path="/orders/:orderId" element={<OrdersScreen />} />
 
           {/* Auth */}
-          <Route path="/auth" element={<AuthScreen />} />
+          <Route path="/auth" element={<AuthRoute />} />
 
           {/* Vendor routes */}
           <Route path="/vendor/apply" element={<VendorApplyScreen />} />
@@ -54,6 +55,22 @@ function App() {
             element={
               <ProtectedRoute roles={['VENDOR', 'ADMIN']}>
                 <VendorSettings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/vendor/menu/new"
+            element={
+              <ProtectedRoute roles={['VENDOR', 'ADMIN']}>
+                <VendorMenuEditorScreen />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/vendor/menu/:menuItemId/edit"
+            element={
+              <ProtectedRoute roles={['VENDOR', 'ADMIN']}>
+                <VendorMenuEditorScreen />
               </ProtectedRoute>
             }
           />
@@ -75,6 +92,28 @@ function App() {
       </div>
     </BrowserRouter>
   );
+}
+
+function HomeRoute() {
+  return <HomeScreen />;
+}
+
+function AuthRoute() {
+  const { user, isAuthenticated } = useAuthStore();
+
+  if (!isAuthenticated || !user) {
+    return <AuthScreen />;
+  }
+
+  if (user.role === 'VENDOR') {
+    return <Navigate to="/vendor/dashboard" replace />;
+  }
+
+  if (user.role === 'ADMIN') {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return <Navigate to="/" replace />;
 }
 
 function ProtectedRoute({

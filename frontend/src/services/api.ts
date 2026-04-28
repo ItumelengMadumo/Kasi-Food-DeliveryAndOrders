@@ -14,6 +14,7 @@ import type {
   Review,
   OrderStatus,
   VendorStatus,
+  BankDetails,
 } from '../types';
 
 export const client = generateClient();
@@ -389,6 +390,26 @@ export async function updateVendorProfile(input: UpdateVendorProfileInput): Prom
   `;
   const result = await client.graphql({ query: mutation, variables: { input } });
   return (result as { data: { updateVendorProfile: Vendor } }).data.updateVendorProfile;
+}
+
+export async function updateVendorBankDetails(
+  vendorId: string,
+  bankDetails: BankDetails
+): Promise<Vendor> {
+  const mutation = /* GraphQL */ `
+    mutation UpdateVendorBankDetails($vendorId: ID!, $bankDetails: AWSJSON!) {
+      updateVendorBankDetails(vendorId: $vendorId, bankDetails: $bankDetails) {
+        id ownerId name address contactDetails status
+        deliveryType deliveryValue hasBankAccount whatsappNumber
+        imageUrl description createdAt
+      }
+    }
+  `;
+  const result = await client.graphql({
+    query: mutation,
+    variables: { vendorId, bankDetails },
+  });
+  return (result as { data: { updateVendorBankDetails: Vendor } }).data.updateVendorBankDetails;
 }
 
 // ── AppSync Subscriptions ─────────────────────────
