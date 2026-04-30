@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { configureAmplify } from './services/amplifyConfigure';
+import { loadAuthenticatedUser } from './services/cognitoAuth';
 import { Navbar, BottomNav } from './components/Navbar';
 import { HomeScreen } from './screens/Home/HomeScreen';
 import { VendorDetailsScreen } from './screens/VendorDetails/VendorDetailsScreen';
@@ -12,17 +13,42 @@ import { VendorDashboard } from './screens/Vendor/VendorDashboard';
 import { VendorApplyScreen } from './screens/Vendor/VendorApplyScreen';
 import { VendorMenuEditorScreen } from './screens/Vendor/VendorMenuEditorScreen';
 import { VendorSettings } from './screens/Vendor/VendorSettings';
+import { VendorWhatsAppScreen } from './screens/Vendor/VendorWhatsAppScreen';
 import { AdminDashboard } from './screens/Admin/AdminDashboard';
 import { useAuthStore } from './state/authStore';
 
 function App() {
+  const { setUser, logout, user } = useAuthStore();
+
   useEffect(() => {
+    let isMounted = true;
+
     try {
       configureAmplify();
     } catch {
       console.warn('Amplify configuration failed — running in demo mode');
     }
-  }, []);
+
+    async function restoreAuthSession() {
+      const authenticatedUser = await loadAuthenticatedUser();
+      if (!isMounted) return;
+
+      if (authenticatedUser) {
+        setUser(authenticatedUser);
+        return;
+      }
+
+      if (user && !user.isGuest) {
+        logout();
+      }
+    }
+
+    void restoreAuthSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [logout, setUser, user]);
 
   return (
     <BrowserRouter>
@@ -55,6 +81,14 @@ function App() {
             element={
               <ProtectedRoute roles={['VENDOR', 'ADMIN']}>
                 <VendorSettings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/vendor/whatsapp"
+            element={
+              <ProtectedRoute roles={['VENDOR', 'ADMIN']}>
+                <VendorWhatsAppScreen />
               </ProtectedRoute>
             }
           />

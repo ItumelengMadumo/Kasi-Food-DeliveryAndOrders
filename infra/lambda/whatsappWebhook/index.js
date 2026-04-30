@@ -34,6 +34,18 @@ const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const https = require('https');
 const crypto = require('crypto');
 
+// Shared WhatsApp formatters — also mirrored in frontend/src/domain/whatsappMenu.ts
+// NOTE: When packaging this Lambda, ensure ../_shared/ is bundled (Lambda layer
+// or build-time copy). The path resolves correctly in local dev.
+const {
+  formatMenuForWhatsApp,
+  formatCartForWhatsApp,
+} = require('../_shared/whatsappMenu');
+const {
+  generateOrderNumber,
+  derivePrefix,
+} = require('../_shared/orderNumber');
+
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient);
 const lambdaClient = new LambdaClient({});
@@ -229,7 +241,8 @@ async function getVendorMenu(vendorId) {
  */
 async function createOrderInDb(vendorId, customerPhone, customerName, cart, paymentMethod, vendor) {
   const orderId = crypto.randomUUID();
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
   const isDelivery = paymentMethod === 'CASH_ON_DELIVERY';
   const deliveryMethod = isDelivery ? 'DELIVERY' : 'PICKUP';
 
@@ -257,6 +270,16 @@ async function createOrderInDb(vendorId, customerPhone, customerName, cart, paym
 
   const totalAmount = parseFloat((subtotal + deliveryFee).toFixed(2));
 
+  // Generate per-vendor / per-day human-readable order number + bank-friendly payment ref.
+  const prefix = vendor.refPrefix || derivePrefix(vendor.name);
+  const { orderNumber, paymentRef } = await generateOrderNumber(
+    ddb,
+    TABLE_NAME,
+    vendorId,
+    prefix,
+    nowDate
+  );
+
   const transactItems = [
     {
       Put: {
@@ -267,6 +290,8 @@ async function createOrderInDb(vendorId, customerPhone, customerName, cart, paym
           GSI1PK: `VENDOR#${vendorId}`,
           GSI1SK: `ORDER#${now}`,
           orderId,
+          orderNumber,
+          paymentRef,
           customerId: null,
           guestDetails: { name: customerName, phone: customerPhone },
           vendorId,
@@ -309,13 +334,13 @@ async function createOrderInDb(vendorId, customerPhone, customerName, cart, paym
 
   await ddb.send(new TransactWriteCommand({ TransactItems: transactItems }));
 
-  return { orderId, subtotal, now };
+  return { orderId, orderNumber, paymentRef, subtotal, now };
 }
 
 /**
  * Asynchronously invoke the notification Lambda (fire-and-forget).
  */
-async function invokeNotification(vendorId, orderId, cart, totalAmount, customerName) {
+async function invokeNotification(vendorId, orderId, orderNumber, cart, totalAmount, customerName) {
   if (!NOTIFICATION_LAMBDA_ARN) return;
   try {
     await lambdaClient.send(
@@ -325,6 +350,7 @@ async function invokeNotification(vendorId, orderId, cart, totalAmount, customer
         Payload: JSON.stringify({
           vendorId,
           orderId,
+          orderNumber,
           orderItems: cart,
           totalAmount,
           customerName,
@@ -337,32 +363,10 @@ async function invokeNotification(vendorId, orderId, cart, totalAmount, customer
 }
 
 // ─── Message formatting helpers ───────────────────────────────────────────
-
-function formatMenu(menuItems, vendorName) {
-  let msg = `Welcome to *${vendorName}* 🍔\n\nHere's our menu:\n\n`;
-  menuItems.forEach((item, i) => {
-    msg += `${i + 1}. *${item.name}* — R${item.price.toFixed(2)}\n`;
-  });
-  msg +=
-    '\nReply with the item *number* and quantity:\n' +
-    '• *1* for one\n' +
-    '• *1 x2* for two\n\n' +
-    '_Reply *0* at any time to restart_';
-  return msg;
-}
-
-function formatCart(cart) {
-  if (cart.length === 0) return 'Your cart is empty.';
-  let msg = '🛒 *Your cart:*\n';
-  let total = 0;
-  for (const item of cart) {
-    const lineTotal = item.price * item.quantity;
-    total += lineTotal;
-    msg += `• ${item.name} x${item.quantity} = R${lineTotal.toFixed(2)}\n`;
-  }
-  msg += `\n*Total: R${total.toFixed(2)}*`;
-  return msg;
-}
+// Shared with the frontend preview — see infra/lambda/_shared/whatsappMenu.js
+const formatMenu = (menuItems, vendorName) =>
+  formatMenuForWhatsApp(vendorName, menuItems);
+const formatCart = (cart) => formatCartForWhatsApp(cart);
 
 // ─── State machine ────────────────────────────────────────────────────────
 
@@ -528,7 +532,7 @@ async function processMessage(customerPhone, vendor, session, messageText) {
     const customerName = session.customerName || 'Guest';
 
     try {
-      const { orderId, subtotal } = await createOrderInDb(
+      const { orderId, orderNumber, paymentRef, subtotal } = await createOrderInDb(
         vendorId,
         customerPhone,
         customerName,
@@ -545,12 +549,11 @@ async function processMessage(customerPhone, vendor, session, messageText) {
       });
 
       // Fire-and-forget: notify vendor
-      await invokeNotification(vendorId, orderId, cart, subtotal, customerName);
+      await invokeNotification(vendorId, orderId, orderNumber, cart, subtotal, customerName);
 
-      const shortId = orderId.slice(-6).toUpperCase();
       let confirmMsg =
         `✅ *Order Confirmed!*\n\n` +
-        `Order #${shortId}\n\n` +
+        `Order #${orderNumber}\n\n` +
         `${formatCart(cart)}\n\n` +
         `Payment: *${paymentMethod.replace(/_/g, ' ')}*\n\n` +
         `We'll notify you when it's ready! 🙌\n\n` +
@@ -564,7 +567,7 @@ async function processMessage(customerPhone, vendor, session, messageText) {
           `Account: ${bd.accountNumber}\n` +
           `Holder: ${bd.accountHolder}\n` +
           `Branch code: ${bd.branchCode}\n` +
-          `Reference: ORDER-${shortId}`;
+          `Reference: ${paymentRef}`;
       }
 
       return confirmMsg;

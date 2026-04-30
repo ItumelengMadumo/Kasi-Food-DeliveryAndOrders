@@ -4,8 +4,15 @@ import { useAuthStore } from '../../state/authStore';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import type { Role } from '../../types';
+import {
+  confirmRegistration,
+  normalizePhoneNumber,
+  registerWithCognito,
+  resendRegistrationCode,
+  signInWithCognito,
+} from '../../services/cognitoAuth';
 
-type AuthMode = 'login' | 'register';
+type AuthMode = 'login' | 'register' | 'confirm';
 
 export function AuthScreen() {
   const navigate = useNavigate();
@@ -20,12 +27,14 @@ export function AuthScreen() {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
 
   // Form fields
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmationCode, setConfirmationCode] = useState('');
 
   useEffect(() => {
     if (requestedMode === 'register' || requestedMode === 'login') {
@@ -70,38 +79,47 @@ export function AuthScreen() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    setInfo('');
     setLoading(true);
 
     try {
-      const assignedRole: Role = 'VENDOR';
+      const assignedRole: Role =
+        (import.meta.env.VITE_DEFAULT_SIGNIN_ROLE?.toUpperCase() as Role) || 'VENDOR';
       const nextPath = destinationByRole[assignedRole];
 
-      // In production, call Cognito via Amplify Auth
-      // For now, simulate auth
-      if (mode === 'login') {
-        // Simulate login
-        setUser({
-          id: `user_${Date.now()}`,
-          name: 'Vendor Account',
-          phone,
-          role: assignedRole,
-          isGuest: false,
-          createdAt: new Date().toISOString(),
-        });
-      } else {
-        // Register
-        setUser({
-          id: `user_${Date.now()}`,
-          name,
-          phone,
-          email: email || undefined,
-          role: assignedRole,
-          isGuest: false,
-          createdAt: new Date().toISOString(),
-        });
+      if (mode === 'confirm') {
+        await confirmRegistration(phone, confirmationCode);
+        const authenticatedUser = await signInWithCognito(phone, password);
+        setUser({ ...authenticatedUser, role: assignedRole });
+        navigate(nextPath);
+        return;
       }
 
-      navigate(nextPath);
+      if (mode === 'login') {
+        const authenticatedUser = await signInWithCognito(phone, password);
+        setUser(authenticatedUser);
+        navigate(destinationByRole[authenticatedUser.role]);
+        return;
+      }
+
+      const normalizedPhone = normalizePhoneNumber(phone);
+      const result = await registerWithCognito({
+        name,
+        phone: normalizedPhone,
+        email,
+        password,
+      });
+
+      if (result.isSignUpComplete) {
+        const authenticatedUser = await signInWithCognito(normalizedPhone, password);
+        setUser({ ...authenticatedUser, role: assignedRole });
+        navigate(nextPath);
+        return;
+      }
+
+      setPhone(normalizedPhone);
+      setMode('confirm');
+      setInfo(`Verification code sent to ${normalizedPhone}. Enter it below to finish setup.`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Authentication failed';
       setError(msg);
@@ -124,12 +142,13 @@ export function AuthScreen() {
 
         {/* Mode tabs */}
         <div className="flex bg-stone-100 rounded-xl p-1 mb-6">
-          {(['login', 'register'] as AuthMode[]).map((m) => (
+          {(['login', 'register'] as const).map((m) => (
             <button
               key={m}
               onClick={() => {
                 setMode(m);
                 setError('');
+                setInfo('');
                 setSearchParams((current) => {
                   const next = new URLSearchParams(current);
                   if (m === 'login') next.delete('mode');
@@ -163,8 +182,10 @@ export function AuthScreen() {
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="e.g. 071 234 5678"
+            placeholder="e.g. +27 71 234 5678"
+            hint="Cognito phone_number expects international format."
             required
+            disabled={mode === 'confirm'}
           />
 
           {mode === 'register' && (
@@ -184,15 +205,56 @@ export function AuthScreen() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
             required
+            disabled={mode === 'confirm'}
           />
+
+          {mode === 'confirm' && (
+            <Input
+              label="Verification Code *"
+              value={confirmationCode}
+              onChange={(e) => setConfirmationCode(e.target.value)}
+              placeholder="Enter the code from SMS or email"
+              required
+            />
+          )}
+
+          {info && <p className="text-sm text-blue-700 bg-blue-50 px-3 py-2 rounded-lg">{info}</p>}
 
           {error && (
             <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
           )}
 
           <Button type="submit" className="w-full" size="lg" loading={loading}>
-            {mode === 'login' ? 'Sign In to Vendor Dashboard' : 'Create Vendor Account'}
+            {mode === 'login'
+              ? 'Sign In to Vendor Dashboard'
+              : mode === 'register'
+              ? 'Create Vendor Account'
+              : 'Verify and Continue'}
           </Button>
+
+          {mode === 'confirm' && (
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              onClick={async () => {
+                setError('');
+                setInfo('');
+                setLoading(true);
+                try {
+                  await resendRegistrationCode(phone);
+                  setInfo(`A new verification code was sent to ${phone}.`);
+                } catch (err: unknown) {
+                  const msg = err instanceof Error ? err.message : 'Could not resend code';
+                  setError(msg);
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            >
+              Resend Verification Code
+            </Button>
+          )}
         </form>
 
         {/* Vendor apply */}

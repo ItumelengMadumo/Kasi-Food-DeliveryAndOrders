@@ -1,36 +1,23 @@
-// AppSync JS Resolver — Mutation.markOrderPaid
-// Marks an order's paymentStatus as PAID.
-// Used by vendors from the dashboard to record manual cash/EFT payments.
+// AppSync JS Resolver — Query.getOrder
+// Fetches a single order by id (metadata only; items resolved via Order.items field).
 
 import { util } from '@aws-appsync/utils';
 
 export function request(ctx) {
   const { orderId } = ctx.args;
-
   return {
-    operation: 'UpdateItem',
-    key: {
-      PK: util.dynamodb.toDynamoDB(`ORDER#${orderId}`),
-      SK: util.dynamodb.toDynamoDB('METADATA'),
-    },
-    update: {
-      expression: 'SET paymentStatus = :ps, updatedAt = :ua',
-      expressionValues: {
-        ':ps': util.dynamodb.toDynamoDB('PAID'),
-        ':ua': util.dynamodb.toDynamoDB(util.time.nowISO8601()),
-      },
-    },
-    condition: {
-      // Ensure the order exists before updating
-      expression: 'attribute_exists(PK)',
-    },
+    operation: 'GetItem',
+    key: util.dynamodb.toMapValues({
+      PK: `ORDER#${orderId}`,
+      SK: 'METADATA',
+    }),
   };
 }
 
 export function response(ctx) {
   if (ctx.error) util.error(ctx.error.message, ctx.error.type);
-
   const item = ctx.result;
+  if (!item) return null;
   return {
     id: item.orderId || item.PK.replace('ORDER#', ''),
     orderNumber: item.orderNumber,

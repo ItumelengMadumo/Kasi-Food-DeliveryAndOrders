@@ -99,6 +99,7 @@ type Vendor {
   deliveryValue: Float
   hasBankAccount: Boolean!
   whatsappNumber: String
+  refPrefix: String
   imageUrl: String
   description: String
   rating: Float
@@ -129,6 +130,8 @@ type OrderItem {
 
 type Order {
   id: ID!
+  orderNumber: String!
+  paymentRef: String!
   customerId: ID
   guestDetails: GuestDetails
   vendorId: ID!
@@ -139,6 +142,7 @@ type Order {
   subtotal: Float!
   totalAmount: Float!
   paymentMethod: PaymentMethod!
+  paymentStatus: String
   contactPhone: String!
   specialInstructions: String
   items: [OrderItem!]

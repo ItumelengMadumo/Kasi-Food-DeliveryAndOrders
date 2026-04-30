@@ -7,6 +7,7 @@ import { getCustomerOrders } from '../../services/api';
 import { OrderStatusBadge } from '../../components/ui/StatusBadge';
 import { LoadingSpinner, EmptyState } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { displayOrderNumber } from '../../domain/orderNumber';
 import type { Order } from '../../types';
 
 export function OrdersScreen() {
@@ -99,7 +100,7 @@ function OrderCard({ order }: { order: Order }) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="font-semibold text-stone-900 text-sm">
-            Order #{order.id.slice(-8).toUpperCase()}
+            Order #{displayOrderNumber(order)}
           </div>
           <div className="text-xs text-stone-400 mt-0.5">
             {new Date(order.createdAt).toLocaleString('en-ZA', {

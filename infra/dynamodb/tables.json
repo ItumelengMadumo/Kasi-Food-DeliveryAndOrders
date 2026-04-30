@@ -61,9 +61,28 @@
         "ownerId", "name", "address", "location", "contactDetails",
         "workingHours", "status", "deliveryType", "deliveryValue",
         "hasBankAccount", "bankDetails", "whatsappNumber",
+        "refPrefix",
         "imageUrl", "description", "rating", "totalReviews", "createdAt"
       ],
-      "_note": "Set GSI3PK = whatsappNumber when whatsappNumber is present to enable O(1) lookup by WhatsApp number"
+      "_note": "Set GSI3PK = whatsappNumber when whatsappNumber is present to enable O(1) lookup by WhatsApp number. refPrefix is a 4-char uppercase identifier used to build per-vendor order numbers."
+    },
+    "VendorPrefixReservation": {
+      "PK": "PREFIX#<refPrefix>",
+      "SK": "RESERVATION",
+      "attributes": [
+        "vendorId",
+        "createdAt"
+      ],
+      "_note": "Conditional Put with attribute_not_exists(PK) guarantees globally-unique vendor refPrefixes."
+    },
+    "OrderCounter": {
+      "PK": "VENDOR#<vendorId>",
+      "SK": "COUNTER#ORDER#<YYYYMMDD>",
+      "attributes": [
+        "seq",
+        "updatedAt"
+      ],
+      "_note": "Atomic per-vendor / per-day order sequence. Incremented via UpdateExpression 'ADD seq :one'. Date key uses Africa/Johannesburg timezone so the counter rolls over at local midnight."
     },
     "VendorApplication": {
       "PK": "APPLICATION#<applicationId>",
@@ -87,10 +106,13 @@
       "GSI2SK": "ORDER#<createdAt>",
       "attributes": [
         "customerId", "guestDetails", "vendorId", "status",
+        "orderNumber",
+        "paymentRef",
         "deliveryMethod", "deliveryFee", "subtotal", "totalAmount",
         "paymentMethod", "paymentStatus", "contactPhone",
         "specialInstructions", "source", "createdAt", "updatedAt"
-      ]
+      ],
+      "_note": "orderNumber is the human-facing per-vendor identifier (e.g. KOTA-260430-0017); paymentRef is the bank-friendly variant (e.g. KOTA2604300017) used for EFT and PayFast references."
     },
     "OrderItem": {
       "PK": "ORDER#<orderId>",

@@ -33,6 +33,8 @@ export function response(ctx) {
   if (ctx.error) util.error(ctx.error.message, ctx.error.type);
   return (ctx.result.items || []).map((item) => ({
     id: item.PK.replace('ORDER#', ''),
+    orderNumber: item.orderNumber,
+    paymentRef: item.paymentRef,
     customerId: item.customerId,
     guestDetails: item.guestDetails,
     vendorId: item.vendorId,
@@ -42,6 +44,7 @@ export function response(ctx) {
     subtotal: item.subtotal,
     totalAmount: item.totalAmount,
     paymentMethod: item.paymentMethod,
+    paymentStatus: item.paymentStatus,
     contactPhone: item.contactPhone,
     specialInstructions: item.specialInstructions,
     createdAt: item.createdAt,

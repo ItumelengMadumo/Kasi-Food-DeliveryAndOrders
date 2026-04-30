@@ -76,6 +76,7 @@ export interface Vendor {
   deliveryValue?: number;
   hasBankAccount: boolean;
   whatsappNumber?: string;
+  refPrefix?: string;
   imageUrl?: string;
   description?: string;
   rating?: number;
@@ -108,6 +109,8 @@ export type OrderSource = 'WEB' | 'WHATSAPP' | 'MANUAL';
 
 export interface Order {
   id: string;
+  orderNumber?: string;
+  paymentRef?: string;
   customerId?: string;
   guestDetails?: GuestDetails;
   vendorId: string;

@@ -1,12 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusCircle, Package, Settings, ToggleLeft, ToggleRight, Bell, Wallet, PencilLine, BarChart3 } from 'lucide-react';
+import {
+  PlusCircle,
+  Package,
+  Settings,
+  ToggleLeft,
+  ToggleRight,
+  Bell,
+  Wallet,
+  PencilLine,
+  BarChart3,
+  Trash2,
+  MessageCircle,
+} from 'lucide-react';
 import { useAuthStore } from '../../state/authStore';
 import {
   getVendorMenu,
   getVendorOrders,
   updateOrderStatus,
   toggleMenuItemAvailability,
+  deleteMenuItem,
   markOrderPaid,
   createOrder,
   subscribeToNewOrders,
@@ -15,7 +28,9 @@ import { LoadingSpinner } from '../../components/ui/Card';
 import { OrderStatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { WhatsAppMenuPreview } from '../../components/WhatsAppMenuPreview';
 import type { MenuItem, Order, OrderStatus, OrderSource } from '../../types';
+import { displayOrderNumber } from '../../domain/orderNumber';
 
 // ── Demo data ──────────────────────────────────────────────────────────────
 
@@ -71,6 +86,7 @@ export function VendorDashboard() {
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingOrder, setUpdatingOrder] = useState<string | null>(null);
+  const [deletingMenuItem, setDeletingMenuItem] = useState<string | null>(null);
   const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
 
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
@@ -229,6 +245,56 @@ export function VendorDashboard() {
     }
   }
 
+  async function handleDeleteMenuItem(itemId: string, itemName: string) {
+    const confirmed = window.confirm(
+      `Delete \"${itemName}\" from your menu? This will remove it from WhatsApp and the dashboard.`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingMenuItem(itemId);
+    try {
+      await deleteMenuItem(itemId, vendorId);
+    } catch {
+      // demo mode
+    } finally {
+      setMenu((prev) => prev.filter((item) => item.id !== itemId));
+      setDeletingMenuItem(null);
+    }
+  }
+
+  // ── Simulated WhatsApp order ──────────────────────────────────────────
+
+  function handleSimulatedOrder(sim: {
+    orderId: string;
+    customerName: string;
+    paymentMethod: 'CASH_ON_PICKUP' | 'EFT' | 'CASH_ON_DELIVERY';
+    total: number;
+  }) {
+    const now = new Date().toISOString();
+    const simulatedOrder: Order = {
+      id: `sim-${sim.orderId}`,
+      vendorId,
+      guestDetails: { name: sim.customerName, phone: 'simulated' },
+      status: 'PENDING',
+      deliveryMethod: sim.paymentMethod === 'CASH_ON_DELIVERY' ? 'DELIVERY' : 'PICKUP',
+      deliveryFee: 0,
+      subtotal: sim.total,
+      totalAmount: sim.total,
+      paymentMethod: sim.paymentMethod,
+      paymentStatus: 'PENDING',
+      contactPhone: 'simulated',
+      source: 'WHATSAPP' as OrderSource,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setOrders((prev) => [simulatedOrder, ...prev]);
+    setNewOrderAlert(
+      `Simulated WhatsApp order from ${sim.customerName} • R${sim.total.toFixed(2)} 🧪`
+    );
+    setTimeout(() => setNewOrderAlert(null), 8000);
+  }
+
   // ── Derived state ─────────────────────────────────────────────────────
 
   const activeOrders = orders.filter((o) => !['COMPLETED', 'CANCELLED'].includes(o.status));
@@ -239,6 +305,7 @@ export function VendorDashboard() {
     const today = new Date().toDateString();
     return new Date(o.createdAt).toDateString() === today;
   });
+  const previewVendorName = user?.name?.trim() || 'Your Shop';
 
   // ── Render ────────────────────────────────────────────────────────────
 
@@ -334,8 +401,14 @@ export function VendorDashboard() {
               onClick={() => setTab('menu')}
             />
             <QuickActionCard
-              title="Contact and Banking Details"
-              description="Maintain phone, WhatsApp, delivery, and payout information in settings."
+              title="WhatsApp Ordering"
+              description="Track WhatsApp orders and review EFT proofs of payment received from customers."
+              buttonLabel="Open WhatsApp"
+              onClick={() => navigate('/vendor/whatsapp')}
+            />
+            <QuickActionCard
+              title="Business Settings"
+              description="Update business info, WhatsApp contact number, and banking details."
               buttonLabel="Open Settings"
               onClick={() => navigate('/vendor/settings')}
             />
@@ -383,12 +456,20 @@ export function VendorDashboard() {
                       key={item.id}
                       item={item}
                       onEdit={() => navigate(`/vendor/menu/${item.id}/edit`)}
+                      onDelete={() => handleDeleteMenuItem(item.id, item.name)}
+                      deleting={deletingMenuItem === item.id}
                     />
                   ))
                 )}
               </div>
             </div>
           </section>
+
+          <WhatsAppMenuPreviewCard
+            menu={menu}
+            vendorName={previewVendorName}
+            onSimulatedOrder={handleSimulatedOrder}
+          />
         </div>
       ) : tab === 'orders' ? (
         <div className="space-y-4">
@@ -436,8 +517,18 @@ export function VendorDashboard() {
                 item={item}
                 onToggle={() => handleToggleItem(item.id, item.available)}
                 onEdit={() => navigate(`/vendor/menu/${item.id}/edit`)}
+                onDelete={() => handleDeleteMenuItem(item.id, item.name)}
+                deleting={deletingMenuItem === item.id}
               />
             ))}
+          </div>
+          <div className="mt-4">
+            <WhatsAppMenuPreviewCard
+              menu={menu}
+              vendorName={previewVendorName}
+              compact
+              onSimulatedOrder={handleSimulatedOrder}
+            />
           </div>
         </div>
       ) : (
@@ -539,7 +630,7 @@ function CompactOrderRow({ order }: { order: Order }) {
     <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-3 py-3">
       <div>
         <div className="font-semibold text-sm text-stone-900">
-          #{order.id.slice(-6).toUpperCase()} • {order.guestDetails?.name || 'Customer'}
+          #{displayOrderNumber(order)} • {order.guestDetails?.name || 'Customer'}
         </div>
         <div className="text-xs text-stone-500 mt-0.5">
           {order.deliveryMethod === 'PICKUP' ? 'Pickup' : 'Delivery'} • {new Date(order.createdAt).toLocaleTimeString('en-ZA', { timeStyle: 'short' })}
@@ -556,9 +647,13 @@ function CompactOrderRow({ order }: { order: Order }) {
 function CompactMenuRow({
   item,
   onEdit,
+  onDelete,
+  deleting,
 }: {
   item: MenuItem;
   onEdit: () => void;
+  onDelete: () => void;
+  deleting: boolean;
 }) {
   return (
     <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-3 py-3">
@@ -573,6 +668,10 @@ function CompactMenuRow({
         <Button size="sm" variant="secondary" onClick={onEdit}>
           <PencilLine size={14} className="mr-1" />
           Edit
+        </Button>
+        <Button size="sm" variant="danger" onClick={onDelete} loading={deleting}>
+          <Trash2 size={14} className="mr-1" />
+          Delete
         </Button>
       </div>
     </div>
@@ -602,7 +701,7 @@ function VendorOrderCard({
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="font-semibold text-stone-900 text-sm">
-            #{order.id.slice(-6).toUpperCase()}
+            #{displayOrderNumber(order)}
             {order.source === 'WHATSAPP' && (
               <span className="ml-2 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
                 WhatsApp
@@ -690,10 +789,14 @@ function VendorMenuItem({
   item,
   onToggle,
   onEdit,
+  onDelete,
+  deleting,
 }: {
   item: MenuItem;
   onToggle: () => void;
   onEdit: () => void;
+  onDelete: () => void;
+  deleting: boolean;
 }) {
   return (
     <div className="bg-white rounded-xl border border-stone-100 p-3 flex items-center gap-3">
@@ -716,8 +819,56 @@ function VendorMenuItem({
         <Button size="sm" variant="secondary" onClick={onEdit}>
           Edit
         </Button>
+        <Button size="sm" variant="danger" onClick={onDelete} loading={deleting}>
+          <Trash2 size={14} className="mr-1" />
+          Delete
+        </Button>
       </div>
     </div>
+  );
+}
+
+function WhatsAppMenuPreviewCard({
+  menu,
+  vendorName,
+  compact = false,
+  onSimulatedOrder,
+}: {
+  menu: MenuItem[];
+  vendorName: string;
+  compact?: boolean;
+  onSimulatedOrder?: (order: {
+    orderId: string;
+    customerName: string;
+    paymentMethod: 'CASH_ON_PICKUP' | 'EFT' | 'CASH_ON_DELIVERY';
+    total: number;
+  }) => void;
+}) {
+  return (
+    <section className="bg-white rounded-xl border border-stone-100 p-4">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h3 className="font-semibold text-stone-900 flex items-center gap-2">
+            <MessageCircle size={16} className="text-kasi-green" />
+            WhatsApp Menu Preview
+          </h3>
+          <p className="text-sm text-stone-500">
+            Try the live ordering flow — type messages or tap quick replies to
+            walk through a complete WhatsApp order.
+          </p>
+        </div>
+        {!compact && (
+          <span className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+            Interactive
+          </span>
+        )}
+      </div>
+      <WhatsAppMenuPreview
+        vendorName={vendorName}
+        menuItems={menu}
+        onSimulatedOrder={onSimulatedOrder}
+      />
+    </section>
   );
 }
 

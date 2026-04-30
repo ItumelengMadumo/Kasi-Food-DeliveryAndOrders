@@ -20,11 +20,60 @@ const {
   TransactWriteCommand,
 } = require('@aws-sdk/lib-dynamodb');
 const crypto = require('crypto');
+const { derivePrefix } = require('../_shared/orderNumber');
 
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient);
 
 const TABLE_NAME = process.env.TABLE_NAME || 'KasiMainTable';
+const PREFIX_MAX_ATTEMPTS = 36; // base prefix + 35 numeric suffixes
+
+/**
+ * Resolve a unique vendor refPrefix by reserving PREFIX#<value> rows.
+ * If the derived prefix is already taken, append digits 1..9 then letters A..Z.
+ * Returns the reserved prefix; the reservation Put is appended to `transactItems`
+ * so the whole approval is atomic.
+ */
+async function reserveUniquePrefix(businessName, vendorId, now) {
+  const base = derivePrefix(businessName);
+  const candidates = [base];
+  // Suffixes: replace last char with 0-9 then A-Z, giving us 36 attempts total.
+  const suffixChars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  for (const ch of suffixChars) {
+    candidates.push(base.slice(0, 3) + ch);
+  }
+
+  for (let i = 0; i < Math.min(candidates.length, PREFIX_MAX_ATTEMPTS); i++) {
+    const candidate = candidates[i];
+    try {
+      await ddb.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              Put: {
+                TableName: TABLE_NAME,
+                Item: {
+                  PK: `PREFIX#${candidate}`,
+                  SK: 'RESERVATION',
+                  vendorId,
+                  createdAt: now,
+                },
+                ConditionExpression: 'attribute_not_exists(PK)',
+              },
+            },
+          ],
+        })
+      );
+      return candidate;
+    } catch (err) {
+      // ConditionalCheckFailed → try the next candidate
+      if (err.name !== 'TransactionCanceledException' && err.name !== 'ConditionalCheckFailedException') {
+        throw err;
+      }
+    }
+  }
+  throw new Error(`Unable to reserve a unique refPrefix for ${businessName}`);
+}
 
 exports.handler = async (event) => {
   console.log('approveVendor event:', JSON.stringify(event, null, 2));
@@ -62,6 +111,9 @@ exports.handler = async (event) => {
   const vendorId = crypto.randomUUID();
   const now = new Date().toISOString();
 
+  // Reserve a unique refPrefix for this vendor (used to build orderNumbers + payment refs).
+  const refPrefix = await reserveUniquePrefix(app.businessName, vendorId, now);
+
   // Build the vendor item — include GSI3PK if a WhatsApp number is provided
   const vendorItem = {
     PK: `VENDOR#${vendorId}`,
@@ -75,6 +127,7 @@ exports.handler = async (event) => {
     deliveryType: null,
     deliveryValue: null,
     hasBankAccount: app.hasBankAccount || false,
+    refPrefix,
     imageUrl: null,
     description: app.description || null,
     rating: null,
@@ -121,7 +174,7 @@ exports.handler = async (event) => {
     })
   );
 
-  console.log(`Application ${applicationId} approved — Vendor ${vendorId} created`);
+  console.log(`Application ${applicationId} approved — Vendor ${vendorId} created (refPrefix=${refPrefix})`);
 
   return {
     id: vendorId,
@@ -132,6 +185,7 @@ exports.handler = async (event) => {
     status: 'APPROVED',
     hasBankAccount: vendorItem.hasBankAccount,
     whatsappNumber: vendorItem.whatsappNumber || null,
+    refPrefix,
     deliveryType: null,
     deliveryValue: null,
     imageUrl: null,

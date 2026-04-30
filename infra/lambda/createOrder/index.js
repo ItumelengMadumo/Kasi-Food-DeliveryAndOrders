@@ -21,6 +21,10 @@ const {
 } = require('@aws-sdk/lib-dynamodb');
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const { v4: uuidv4 } = require('uuid');
+const {
+  generateOrderNumber,
+  derivePrefix,
+} = require('../_shared/orderNumber');
 
 const client = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(client);
@@ -117,7 +121,19 @@ exports.handler = async (event) => {
   const totalAmount = parseFloat((subtotal + deliveryFee).toFixed(2));
 
   const orderId = uuidv4();
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
+
+  // Generate the human-facing orderNumber + bank-friendly paymentRef.
+  // Falls back to a name-derived prefix for vendors approved before refPrefix existed.
+  const prefix = vendor.refPrefix || derivePrefix(vendor.name);
+  const { orderNumber, paymentRef } = await generateOrderNumber(
+    ddb,
+    TABLE_NAME,
+    vendorId,
+    prefix,
+    nowDate
+  );
 
   // Build DynamoDB transact items
   const transactItems = [];
@@ -129,6 +145,8 @@ exports.handler = async (event) => {
     GSI1PK: `VENDOR#${vendorId}`,
     GSI1SK: `ORDER#${now}`,
     orderId,
+    orderNumber,
+    paymentRef,
     customerId: customerId || null,
     guestDetails: guestDetails || null,
     vendorId,
@@ -181,7 +199,7 @@ exports.handler = async (event) => {
 
   await ddb.send(new TransactWriteCommand({ TransactItems: transactItems }));
 
-  console.log(`Order ${orderId} created successfully`);
+  console.log(`Order ${orderId} (${orderNumber}) created successfully`);
 
   // Fire-and-forget: notify the vendor via WhatsApp (does not block order response)
   if (NOTIFICATION_LAMBDA_ARN) {
@@ -193,6 +211,7 @@ exports.handler = async (event) => {
           Payload: JSON.stringify({
             vendorId,
             orderId,
+            orderNumber,
             orderItems: items.map((i) => ({
               name: i.name,
               quantity: i.quantity,
@@ -211,6 +230,8 @@ exports.handler = async (event) => {
 
   return {
     id: orderId,
+    orderNumber,
+    paymentRef,
     customerId: customerId || null,
     guestDetails: guestDetails || null,
     vendorId,

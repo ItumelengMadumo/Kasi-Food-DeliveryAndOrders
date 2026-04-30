@@ -1,37 +1,26 @@
-// AppSync JS Resolver — Mutation.markOrderPaid
-// Marks an order's paymentStatus as PAID.
-// Used by vendors from the dashboard to record manual cash/EFT payments.
+// AppSync JS Resolver — Query.getCustomerOrders
+// Lists all orders for a registered customer via GSI2.
 
 import { util } from '@aws-appsync/utils';
 
 export function request(ctx) {
-  const { orderId } = ctx.args;
-
+  const { customerId } = ctx.args;
   return {
-    operation: 'UpdateItem',
-    key: {
-      PK: util.dynamodb.toDynamoDB(`ORDER#${orderId}`),
-      SK: util.dynamodb.toDynamoDB('METADATA'),
-    },
-    update: {
-      expression: 'SET paymentStatus = :ps, updatedAt = :ua',
+    operation: 'Query',
+    index: 'GSI2-CustomerOrders',
+    query: {
+      expression: 'GSI2PK = :pk',
       expressionValues: {
-        ':ps': util.dynamodb.toDynamoDB('PAID'),
-        ':ua': util.dynamodb.toDynamoDB(util.time.nowISO8601()),
+        ':pk': util.dynamodb.toDynamoDB(`USER#${customerId}`),
       },
     },
-    condition: {
-      // Ensure the order exists before updating
-      expression: 'attribute_exists(PK)',
-    },
+    scanIndexForward: false, // newest first
   };
 }
 
 export function response(ctx) {
   if (ctx.error) util.error(ctx.error.message, ctx.error.type);
-
-  const item = ctx.result;
-  return {
+  return (ctx.result.items || []).map((item) => ({
     id: item.orderId || item.PK.replace('ORDER#', ''),
     orderNumber: item.orderNumber,
     paymentRef: item.paymentRef,
@@ -49,5 +38,5 @@ export function response(ctx) {
     specialInstructions: item.specialInstructions,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
-  };
+  }));
 }

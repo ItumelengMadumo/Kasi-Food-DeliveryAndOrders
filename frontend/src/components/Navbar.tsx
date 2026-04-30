@@ -3,6 +3,7 @@ import { ShoppingCart, Home, Package, User, LogOut, Store } from 'lucide-react';
 import { useAuthStore } from '../state/authStore';
 import { useCartStore } from '../state/cartStore';
 import { clsx } from 'clsx';
+import { signOutFromCognito } from '../services/cognitoAuth';
 
 export function Navbar() {
   const { user, isAuthenticated, logout } = useAuthStore();
@@ -16,9 +17,15 @@ export function Navbar() {
   const isPublicMarketingRoute = ['/', '/auth', '/vendor/apply'].includes(location.pathname);
   const publicAnchorPrefix = location.pathname === '/' ? '' : '/';
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await signOutFromCognito();
+    } catch {
+      // Continue clearing local state even when Cognito sign-out is unavailable.
+    } finally {
+      logout();
+      navigate('/');
+    }
   };
 
   return (
@@ -106,7 +113,7 @@ export function Navbar() {
                 Hi, {user?.name?.split(' ')[0] || 'User'}
               </span>
               <button
-                onClick={handleLogout}
+                onClick={() => void handleLogout()}
                 className="p-2 text-stone-500 hover:text-red-500 transition-colors"
                 aria-label="Logout"
               >

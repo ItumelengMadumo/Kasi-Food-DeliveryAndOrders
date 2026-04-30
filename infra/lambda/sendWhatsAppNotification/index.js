@@ -10,6 +10,7 @@
  * {
  *   vendorId: string,
  *   orderId: string,
+ *   orderNumber?: string,   // human-readable, e.g. "KOTA-260430-0017"
  *   orderItems: [{ name: string, quantity: number, price: number }],
  *   totalAmount: number,
  *   customerName: string | null
@@ -105,7 +106,7 @@ function formatOrderItems(orderItems) {
 exports.handler = async (event) => {
   console.log('sendWhatsAppNotification event:', JSON.stringify(event, null, 2));
 
-  const { vendorId, orderId, orderItems = [], totalAmount, customerName } = event;
+  const { vendorId, orderId, orderNumber, orderItems = [], totalAmount, customerName } = event;
 
   if (!vendorId) throw new Error('vendorId is required');
   if (!orderId) throw new Error('orderId is required');
@@ -135,14 +136,16 @@ exports.handler = async (event) => {
     return { success: false, reason: 'no_whatsapp_number' };
   }
 
-  const shortId = orderId.slice(-6).toUpperCase();
+  // Prefer the human-readable orderNumber; fall back to a UUID short-id for
+  // legacy orders that pre-date the orderNumber rollout.
+  const displayId = orderNumber || `${orderId.slice(-6).toUpperCase()}`;
   const itemsList = formatOrderItems(orderItems);
   const total = parseFloat(totalAmount || 0).toFixed(2);
   const customer = customerName ? `\nCustomer: ${customerName}` : '';
 
   const message =
     `🚨 *New Order!*\n` +
-    `\nOrder #${shortId}${customer}` +
+    `\nOrder #${displayId}${customer}` +
     `\n\n${itemsList}` +
     `\n\n*Total: R${total}*` +
     `\n\nOpen your dashboard to process this order. 👇`;

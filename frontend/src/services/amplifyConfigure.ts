@@ -2,7 +2,7 @@
 
 /**
  * AWS Amplify configuration
- * Replace placeholder values with your actual AppSync and Cognito settings.
+ * Configure Cognito User Pool auth for the Vite frontend.
  */
 
 import { Amplify } from 'aws-amplify';
@@ -14,6 +14,11 @@ const awsConfig = {
       userPoolClientId:
         import.meta.env.VITE_COGNITO_CLIENT_ID || 'xxxxxxxxxxxxxxxxxxxxxxxxxx',
       signUpVerificationMethod: 'code' as const,
+      loginWith: {
+        email: true,
+        phone: true,
+        username: true,
+      },
     },
   },
   API: {

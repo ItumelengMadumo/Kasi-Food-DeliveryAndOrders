@@ -26,7 +26,7 @@ export async function getVendor(vendorId: string): Promise<Vendor | null> {
     query GetVendor($vendorId: ID!) {
       getVendor(vendorId: $vendorId) {
         id ownerId name address contactDetails workingHours
-        status deliveryType deliveryValue hasBankAccount whatsappNumber
+        status deliveryType deliveryValue hasBankAccount whatsappNumber refPrefix
         imageUrl description rating totalReviews createdAt
         location { lat lng }
       }
@@ -92,8 +92,8 @@ export async function getOrder(orderId: string): Promise<Order | null> {
   const query = /* GraphQL */ `
     query GetOrder($orderId: ID!) {
       getOrder(orderId: $orderId) {
-        id customerId vendorId status deliveryMethod deliveryFee
-        subtotal totalAmount paymentMethod contactPhone specialInstructions
+        id orderNumber paymentRef customerId vendorId status deliveryMethod deliveryFee
+        subtotal totalAmount paymentMethod paymentStatus contactPhone specialInstructions
         createdAt updatedAt
         guestDetails { name phone }
         items { id menuItemId name price quantity }
@@ -108,7 +108,7 @@ export async function getCustomerOrders(customerId: string): Promise<Order[]> {
   const query = /* GraphQL */ `
     query GetCustomerOrders($customerId: ID!) {
       getCustomerOrders(customerId: $customerId) {
-        id vendorId status deliveryMethod totalAmount paymentMethod
+        id orderNumber paymentRef vendorId status deliveryMethod totalAmount paymentMethod paymentStatus
         contactPhone createdAt updatedAt
         guestDetails { name phone }
       }
@@ -125,8 +125,8 @@ export async function getVendorOrders(
   const query = /* GraphQL */ `
     query GetVendorOrders($vendorId: ID!, $status: OrderStatus) {
       getVendorOrders(vendorId: $vendorId, status: $status) {
-        id customerId vendorId status deliveryMethod deliveryFee
-        subtotal totalAmount paymentMethod contactPhone createdAt updatedAt
+        id orderNumber paymentRef customerId vendorId status deliveryMethod deliveryFee
+        subtotal totalAmount paymentMethod paymentStatus contactPhone createdAt updatedAt
         guestDetails { name phone }
         items { id menuItemId name price quantity }
       }
@@ -153,7 +153,7 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
   const mutation = /* GraphQL */ `
     mutation CreateOrder($input: CreateOrderInput!) {
       createOrder(input: $input) {
-        id vendorId status deliveryMethod deliveryFee
+        id orderNumber paymentRef vendorId status deliveryMethod deliveryFee
         subtotal totalAmount paymentMethod contactPhone createdAt updatedAt
         guestDetails { name phone }
       }
@@ -246,6 +246,22 @@ export async function toggleMenuItemAvailability(
     .toggleMenuItemAvailability;
 }
 
+export async function deleteMenuItem(
+  menuItemId: string,
+  vendorId: string
+): Promise<boolean> {
+  const mutation = /* GraphQL */ `
+    mutation DeleteMenuItem($menuItemId: ID!, $vendorId: ID!) {
+      deleteMenuItem(menuItemId: $menuItemId, vendorId: $vendorId)
+    }
+  `;
+  const result = await client.graphql({
+    query: mutation,
+    variables: { menuItemId, vendorId },
+  });
+  return (result as { data: { deleteMenuItem: boolean } }).data.deleteMenuItem;
+}
+
 // ── Vendor Application ────────────────────────────
 
 export interface CreateVendorApplicationInput {
@@ -325,8 +341,8 @@ export async function getAllOrders(status?: OrderStatus): Promise<Order[]> {
   const query = /* GraphQL */ `
     query GetAllOrders($status: OrderStatus) {
       getAllOrders(status: $status) {
-        id customerId vendorId status deliveryMethod totalAmount
-        paymentMethod contactPhone createdAt
+        id orderNumber paymentRef customerId vendorId status deliveryMethod totalAmount
+        paymentMethod paymentStatus contactPhone createdAt
         guestDetails { name phone }
       }
     }
@@ -355,7 +371,7 @@ export async function markOrderPaid(orderId: string): Promise<Order> {
   const mutation = /* GraphQL */ `
     mutation MarkOrderPaid($orderId: ID!) {
       markOrderPaid(orderId: $orderId) {
-        id status paymentStatus updatedAt
+        id orderNumber paymentRef status paymentStatus updatedAt
       }
     }
   `;
@@ -423,7 +439,7 @@ export async function updateVendorBankDetails(
 export const ON_NEW_ORDER_FOR_VENDOR = /* GraphQL */ `
   subscription OnNewOrderForVendor($vendorId: ID!) {
     onNewOrderForVendor(vendorId: $vendorId) {
-      id customerId vendorId status deliveryMethod deliveryFee
+      id orderNumber paymentRef customerId vendorId status deliveryMethod deliveryFee
       subtotal totalAmount paymentMethod paymentStatus contactPhone
       createdAt updatedAt
       guestDetails { name phone }

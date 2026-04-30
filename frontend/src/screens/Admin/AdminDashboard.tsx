@@ -5,6 +5,7 @@ import { LoadingSpinner } from '../../components/ui/Card';
 import { OrderStatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
 import type { VendorApplication, Order } from '../../types';
+import { displayOrderNumber } from '../../domain/orderNumber';
 
 export function AdminDashboard() {
   const [tab, setTab] = useState<'applications' | 'orders'>('applications');
@@ -241,7 +242,7 @@ function AdminOrderRow({ order }: { order: Order }) {
     <div className="bg-white rounded-xl border border-stone-100 p-3 flex items-center justify-between gap-3">
       <div>
         <div className="font-semibold text-stone-900 text-sm">
-          #{order.id.slice(-8).toUpperCase()}
+          #{displayOrderNumber(order)}
         </div>
         <div className="text-xs text-stone-400">
           {order.guestDetails

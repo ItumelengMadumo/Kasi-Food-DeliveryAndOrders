@@ -63,19 +63,28 @@ exports.handler = async (event) => {
     return {
       success: true,
       flow: 'CASH',
+      orderNumber: order.orderNumber || null,
+      paymentRef: order.paymentRef || null,
       message: 'Order placed. Payment will be collected on delivery/pickup.',
       adminFee: order.platformFee,
     };
   }
 
   // Banked vendor: digital payment via PayFast
-  // In production, generate PayFast payment URL and return it
+  // We display the human-friendly orderNumber to the customer but pass the
+  // UUID `orderId` as `m_payment_id` so PayFast ITN can be matched back to the
+  // canonical record idempotently.
+  const orderNumber = order.orderNumber || orderId;
+  const paymentRef = order.paymentRef || orderNumber;
+
   const paymentData = {
     merchant_id: PAYFAST_MERCHANT_ID,
     merchant_key: PAYFAST_MERCHANT_KEY,
     amount: order.totalAmount.toFixed(2),
-    item_name: `Kasi Food Order ${orderId}`,
+    item_name: `Kasi Food Order ${orderNumber}`,
+    item_description: `Payment ref ${paymentRef}`,
     m_payment_id: orderId,
+    custom_str1: paymentRef,
     email_address: order.guestDetails?.email || '',
     name_first: order.guestDetails?.name?.split(' ')[0] || '',
     name_last: order.guestDetails?.name?.split(' ').slice(1).join(' ') || '',
@@ -105,6 +114,8 @@ exports.handler = async (event) => {
     success: true,
     flow: 'DIGITAL',
     paymentUrl,
+    paymentRef,
+    orderNumber,
     message: 'Redirect customer to payment URL',
   };
 };
