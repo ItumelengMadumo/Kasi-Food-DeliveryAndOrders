@@ -15,15 +15,8 @@ const VALID_ROLES: Role[] = ['CUSTOMER', 'VENDOR', 'ADMIN'];
 function normalizeRole(value: unknown): Role | null {
     if (typeof value !== 'string') return null;
     const normalized = value.toUpperCase();
+    if (normalized === 'SUPER_ADMIN' || normalized === 'DEV') return 'ADMIN';
     return VALID_ROLES.includes(normalized as Role) ? (normalized as Role) : null;
-}
-
-export function normalizePhoneNumber(phone: string) {
-    const compact = phone.replace(/\s+/g, '');
-    if (!/^\+\d{8,15}$/.test(compact)) {
-        throw new Error('Use international phone format, for example +27712345678.');
-    }
-    return compact;
 }
 
 function getRoleFromSession(payload: Record<string, unknown> | undefined) {
@@ -39,6 +32,14 @@ function getRoleFromSession(payload: Record<string, unknown> | undefined) {
     }
 
     return null;
+}
+
+export function normalizePhoneNumber(phone: string) {
+    const compact = phone.replace(/\s+/g, '');
+    if (!/^\+\d{8,15}$/.test(compact)) {
+        throw new Error('Use international phone format, for example +27712345678.');
+    }
+    return compact;
 }
 
 export async function loadAuthenticatedUser(): Promise<User | null> {
@@ -110,7 +111,7 @@ export async function resendRegistrationCode(phone: string) {
     return resendSignUpCode({ username: normalizePhoneNumber(phone) });
 }
 
-export async function signInWithCognito(phone: string, password: string) {
+export async function signInWithCognito(phone: string, password: string): Promise<User> {
     const result = await signIn({
         username: normalizePhoneNumber(phone),
         password,

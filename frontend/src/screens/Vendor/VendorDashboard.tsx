@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   PlusCircle,
@@ -29,6 +29,7 @@ import { OrderStatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { WhatsAppMenuPreview } from '../../components/WhatsAppMenuPreview';
+import type { WhatsAppBankingDetails } from '../../domain/whatsappMenu';
 import type { MenuItem, Order, OrderStatus, OrderSource } from '../../types';
 import { displayOrderNumber } from '../../domain/orderNumber';
 
@@ -79,7 +80,7 @@ const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
 export function VendorDashboard() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const vendorId = user?.id ? `vendor_${user.id}` : DEMO_VENDOR_ID;
+  const vendorId = user?.id || DEMO_VENDOR_ID;
 
   const [tab, setTab] = useState<'overview' | 'orders' | 'menu' | 'add'>('overview');
   const [orders, setOrders] = useState<Order[]>([]);
@@ -306,6 +307,17 @@ export function VendorDashboard() {
     return new Date(o.createdAt).toDateString() === today;
   });
   const previewVendorName = user?.name?.trim() || 'Your Shop';
+  const bankingDetails = useMemo<WhatsAppBankingDetails | undefined>(() => {
+    try {
+      const saved = localStorage.getItem(`kasi-vendor-bank-${vendorId}`);
+      return saved ? (JSON.parse(saved) as WhatsAppBankingDetails) : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [vendorId]);
+  const pendingProofs = orders.filter(
+    (order) => order.paymentMethod === 'EFT' && order.paymentStatus !== 'PAID'
+  ).length;
 
   // ── Render ────────────────────────────────────────────────────────────
 
@@ -387,31 +399,44 @@ export function VendorDashboard() {
             <MetricCard title="Revenue" value={`R${totalRevenue.toFixed(0)}`} hint="Based on tracked order totals" icon={<Wallet size={18} />} />
           </section>
 
-          <section className="grid gap-4 lg:grid-cols-3">
-            <QuickActionCard
-              title="Manage Orders"
-              description="Review incoming orders, update statuses, and check completed orders."
-              buttonLabel="Open Orders"
-              onClick={() => setTab('orders')}
-            />
-            <QuickActionCard
-              title="Amend Menu and Pricing"
-              description="Open your menu list, edit item pricing, and add new products quickly."
-              buttonLabel="Open Menu"
-              onClick={() => setTab('menu')}
-            />
-            <QuickActionCard
-              title="WhatsApp Ordering"
-              description="Track WhatsApp orders and review EFT proofs of payment received from customers."
-              buttonLabel="Open WhatsApp"
-              onClick={() => navigate('/vendor/whatsapp')}
-            />
-            <QuickActionCard
-              title="Business Settings"
-              description="Update business info, WhatsApp contact number, and banking details."
-              buttonLabel="Open Settings"
-              onClick={() => navigate('/vendor/settings')}
-            />
+         
+
+          <section className="bg-white rounded-xl border border-stone-100 p-4">
+            <h3 className="font-semibold text-stone-900">Module Overview</h3>
+            <p className="mt-1 text-sm text-stone-500">
+              This dashboard gives you a quick health check. Open each module below when you need
+              detailed actions and full records.
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <ModuleOverviewRow
+                title="Orders"
+                summary={`${activeOrders.length} active, ${completedOrders.length} completed`}
+                detail="Track status flow from pending to completed, manage payments, and review order timelines."
+                actionLabel="Open Orders"
+                onClick={() => setTab('orders')}
+              />
+              <ModuleOverviewRow
+                title="Menu"
+                summary={`${menu.filter((item) => item.available).length} visible, ${menu.filter((item) => !item.available).length} hidden`}
+                detail="Control visibility, pricing, categories, and quick item updates for customer-facing menus."
+                actionLabel="Open Menu"
+                onClick={() => setTab('menu')}
+              />
+              <ModuleOverviewRow
+                title="WhatsApp"
+                summary={`${pendingProofs} EFT payments pending review`}
+                detail="Review payment confirmations, track proof status, and manage WhatsApp order channel details."
+                actionLabel="Open WhatsApp"
+                onClick={() => navigate('/vendor/whatsapp')}
+              />
+              <ModuleOverviewRow
+                title="Business Settings"
+                summary="Profile, contact, and payout settings"
+                detail="Update your operating info, customer contact number, and account details used in payment flows."
+                actionLabel="Open Settings"
+                onClick={() => navigate('/vendor/settings')}
+              />
+            </div>
           </section>
 
           <section className="grid gap-4 lg:grid-cols-2">
@@ -468,11 +493,25 @@ export function VendorDashboard() {
           <WhatsAppMenuPreviewCard
             menu={menu}
             vendorName={previewVendorName}
+            bankingDetails={bankingDetails}
             onSimulatedOrder={handleSimulatedOrder}
           />
         </div>
       ) : tab === 'orders' ? (
         <div className="space-y-4">
+          <section className="bg-white rounded-xl border border-stone-100 p-4">
+            <h3 className="font-semibold text-stone-900">Order Operations Detail</h3>
+            <p className="mt-1 text-sm text-stone-500">
+              Use this module to process live orders, mark payments, and verify what has already been fulfilled.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <MiniStat label="Pending" value={orders.filter((o) => o.status === 'PENDING').length} />
+              <MiniStat label="Preparing" value={orders.filter((o) => o.status === 'PREPARING').length} />
+              <MiniStat label="Ready" value={orders.filter((o) => o.status === 'READY').length} />
+              <MiniStat label="Completed" value={completedOrders.length} />
+            </div>
+          </section>
+
           {activeOrders.length === 0 ? (
             <p className="text-center text-stone-400 py-8">No active orders right now.</p>
           ) : (
@@ -504,6 +543,29 @@ export function VendorDashboard() {
         </div>
       ) : tab === 'menu' ? (
         <div>
+          <section className="bg-white rounded-xl border border-stone-100 p-4 mb-4">
+            <h3 className="font-semibold text-stone-900">Menu Detail View</h3>
+            <p className="mt-1 text-sm text-stone-500">
+              This module controls exactly what customers can see and order. Toggle availability,
+              adjust pricing, and keep categories clean for easier browsing.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <MiniStat label="Total Items" value={menu.length} />
+              <MiniStat label="Visible" value={menu.filter((item) => item.available).length} />
+              <MiniStat label="Hidden" value={menu.filter((item) => !item.available).length} />
+              <MiniStat
+                label="Avg Price"
+                value={
+                  menu.length
+                    ? `R${
+                        (menu.reduce((sum, item) => sum + item.price, 0) / menu.length).toFixed(0)
+                      }`
+                    : 'R0'
+                }
+              />
+            </div>
+          </section>
+
           <div className="flex justify-end mb-4">
             <Button onClick={() => navigate('/vendor/menu/new')} size="sm">
               <PlusCircle size={16} className="mr-1.5" />
@@ -526,6 +588,7 @@ export function VendorDashboard() {
             <WhatsAppMenuPreviewCard
               menu={menu}
               vendorName={previewVendorName}
+              bankingDetails={bankingDetails}
               compact
               onSimulatedOrder={handleSimulatedOrder}
             />
@@ -625,6 +688,40 @@ function QuickActionCard({
   );
 }
 
+function ModuleOverviewRow({
+  title,
+  summary,
+  detail,
+  actionLabel,
+  onClick,
+}: {
+  title: string;
+  summary: string;
+  detail: string;
+  actionLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+      <div className="text-sm font-semibold text-stone-900">{title}</div>
+      <div className="mt-1 text-xs font-medium text-kasi-orange">{summary}</div>
+      <p className="mt-2 text-xs text-stone-500">{detail}</p>
+      <Button size="sm" variant="secondary" className="mt-3" onClick={onClick}>
+        {actionLabel}
+      </Button>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+      <div className="text-xs text-stone-500">{label}</div>
+      <div className="text-lg font-semibold text-stone-900">{value}</div>
+    </div>
+  );
+}
+
 function CompactOrderRow({ order }: { order: Order }) {
   return (
     <div className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 px-3 py-3">
@@ -694,7 +791,8 @@ function VendorOrderCard({
   const isCashOrder =
     order.paymentMethod === 'CASH_ON_DELIVERY' ||
     order.paymentMethod === 'CASH_ON_PICKUP' ||
-    order.paymentMethod === 'EFT';
+    order.paymentMethod === 'EFT' ||
+    order.paymentMethod === 'PAYMENT_LINK';
 
   return (
     <div className="bg-white rounded-xl border border-stone-100 p-4">
@@ -727,6 +825,8 @@ function VendorOrderCard({
             ? '💳 Digital'
             : order.paymentMethod === 'EFT'
             ? '🏦 EFT'
+            : order.paymentMethod === 'PAYMENT_LINK'
+            ? '🔗 Payment link'
             : '💵 Cash'}
         </span>
         <span className="font-bold text-kasi-orange">R{order.totalAmount.toFixed(2)}</span>
@@ -832,11 +932,13 @@ function WhatsAppMenuPreviewCard({
   menu,
   vendorName,
   compact = false,
+  bankingDetails,
   onSimulatedOrder,
 }: {
   menu: MenuItem[];
   vendorName: string;
   compact?: boolean;
+  bankingDetails?: WhatsAppBankingDetails;
   onSimulatedOrder?: (order: {
     orderId: string;
     customerName: string;
@@ -866,6 +968,7 @@ function WhatsAppMenuPreviewCard({
       <WhatsAppMenuPreview
         vendorName={vendorName}
         menuItems={menu}
+        bankingDetails={bankingDetails}
         onSimulatedOrder={onSimulatedOrder}
       />
     </section>
@@ -1117,6 +1220,7 @@ function ManualOrderForm({
             <option value="CASH_ON_DELIVERY">🚚 Cash on delivery</option>
             <option value="EFT">🏦 EFT</option>
             <option value="DIGITAL">💳 Digital payment</option>
+            <option value="PAYMENT_LINK">🔗 Payment link</option>
           </select>
         </div>
       </div>

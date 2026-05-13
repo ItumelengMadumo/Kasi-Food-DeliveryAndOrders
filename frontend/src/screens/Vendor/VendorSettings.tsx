@@ -17,7 +17,7 @@ const DEMO_VENDOR_ID = 'demo-vendor-1';
 export function VendorSettings() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const vendorId = user?.id ? `vendor_${user.id}` : DEMO_VENDOR_ID;
+  const vendorId = user?.id || DEMO_VENDOR_ID;
 
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [loading, setLoading] = useState(true);
@@ -172,6 +172,30 @@ export function VendorSettings() {
       </div>
 
       <form onSubmit={handleSave} className="space-y-5">
+        <section className="bg-white rounded-xl border border-stone-100 p-4 space-y-2">
+          <h2 className="font-semibold text-stone-800 text-sm uppercase tracking-wide">
+            Module Detail
+          </h2>
+          <p className="text-sm text-stone-600">
+            This page manages your business identity and payout setup. Keep these fields accurate
+            so customer communication, WhatsApp routing, and payment operations stay aligned.
+          </p>
+          <div className="grid gap-2 text-xs text-stone-500 sm:grid-cols-3">
+            <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+              <span className="font-semibold text-stone-700">Business Info</span>
+              <p className="mt-1">Shown across your profile and customer touchpoints.</p>
+            </div>
+            <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+              <span className="font-semibold text-stone-700">WhatsApp Number</span>
+              <p className="mt-1">Used for inbound order routing and customer contact.</p>
+            </div>
+            <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+              <span className="font-semibold text-stone-700">Banking Details</span>
+              <p className="mt-1">Used by EFT workflows and future payout reconciliation.</p>
+            </div>
+          </div>
+        </section>
+
         {/* Business Info */}
         <section className="bg-white rounded-xl border border-stone-100 p-4 space-y-4">
           <h2 className="font-semibold text-stone-800 text-sm uppercase tracking-wide">

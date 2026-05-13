@@ -91,6 +91,7 @@ export type WhatsAppSimStep =
   | 'SELECTING_ITEMS'
   | 'CONFIRM_ORDER'
   | 'PAYMENT'
+  | 'EFT_BANKING'
   | 'DONE';
 
 export type WhatsAppPaymentMethod =
@@ -143,11 +144,19 @@ function shortOrderId(): string {
  *
  * Mirrors the state machine in `infra/lambda/whatsappWebhook/index.js`.
  */
+export interface WhatsAppBankingDetails {
+  bankName?: string;
+  accountHolder?: string;
+  accountNumber?: string;
+  branchCode?: string;
+}
+
 export function processWhatsAppSimMessage(
   session: WhatsAppSimSession,
   vendorName: string,
   menuItems: WhatsAppMenuItem[],
-  rawMessage: string
+  rawMessage: string,
+  bankingDetails?: WhatsAppBankingDetails
 ): WhatsAppSimReply {
   const messageText = (rawMessage || '').trim();
   const upperMsg = messageText.toUpperCase();
@@ -288,6 +297,28 @@ export function processWhatsAppSimMessage(
       };
     }
 
+    // EFT: show banking details first before confirming
+    if (paymentMethod === 'EFT') {
+      const bd = bankingDetails;
+      let bankMsg = `🏦 *EFT Banking Details*\n\n`;
+      if (bd?.bankName || bd?.accountHolder || bd?.accountNumber || bd?.branchCode) {
+        if (bd?.bankName) bankMsg += `Bank: *${bd.bankName}*\n`;
+        if (bd?.accountHolder) bankMsg += `Account holder: *${bd.accountHolder}*\n`;
+        if (bd?.accountNumber) bankMsg += `Account number: *${bd.accountNumber}*\n`;
+        if (bd?.branchCode) bankMsg += `Branch code: *${bd.branchCode}*\n`;
+      } else {
+        bankMsg += `_(Banking details not set up yet — please contact the vendor directly)_\n`;
+      }
+      bankMsg +=
+        `\n💡 *Important:* Please save your *Proof of Payment (PoP)* — ` +
+        `you will need to show it when collecting your order.\n\n` +
+        `Reply *OK* once you have made the payment.`;
+      return {
+        session: { ...session, step: 'EFT_BANKING', paymentMethod: 'EFT' },
+        reply: bankMsg,
+      };
+    }
+
     const cart = session.cart;
     const customerName = session.customerName || 'Guest';
     const orderId = shortOrderId();
@@ -313,6 +344,34 @@ export function processWhatsAppSimMessage(
         orderId,
         customerName,
         paymentMethod,
+        cart,
+        total,
+      },
+    };
+  }
+
+  if (session.step === 'EFT_BANKING') {
+    const cart = session.cart;
+    const customerName = session.customerName || 'Guest';
+    const orderId = shortOrderId();
+    const total = cart.reduce((s, c) => s + c.price * c.quantity, 0);
+
+    const confirmMsg =
+      `✅ *Order Confirmed!*\n\n` +
+      `Order #${orderId}\n\n` +
+      `${formatCartForWhatsApp(cart)}\n\n` +
+      `Payment: *EFT (Bank transfer)*\n\n` +
+      `📋 *Remember to bring your Proof of Payment when collecting your order!*\n\n` +
+      `We'll prepare your order once payment is confirmed. 🙌\n\n` +
+      `_Reply *0* to place a new order_`;
+
+    return {
+      session: { ...session, step: 'DONE', orderId },
+      reply: confirmMsg,
+      orderConfirmed: {
+        orderId,
+        customerName,
+        paymentMethod: 'EFT',
         cart,
         total,
       },

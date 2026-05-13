@@ -83,15 +83,11 @@ export function AuthScreen() {
     setLoading(true);
 
     try {
-      const assignedRole: Role =
-        (import.meta.env.VITE_DEFAULT_SIGNIN_ROLE?.toUpperCase() as Role) || 'VENDOR';
-      const nextPath = destinationByRole[assignedRole];
-
       if (mode === 'confirm') {
         await confirmRegistration(phone, confirmationCode);
         const authenticatedUser = await signInWithCognito(phone, password);
-        setUser({ ...authenticatedUser, role: assignedRole });
-        navigate(nextPath);
+        setUser(authenticatedUser);
+        navigate(destinationByRole[authenticatedUser.role] || '/');
         return;
       }
 
@@ -112,8 +108,8 @@ export function AuthScreen() {
 
       if (result.isSignUpComplete) {
         const authenticatedUser = await signInWithCognito(normalizedPhone, password);
-        setUser({ ...authenticatedUser, role: assignedRole });
-        navigate(nextPath);
+        setUser(authenticatedUser);
+        navigate(destinationByRole[authenticatedUser.role] || '/');
         return;
       }
 

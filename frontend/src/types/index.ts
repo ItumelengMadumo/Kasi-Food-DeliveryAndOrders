@@ -23,7 +23,8 @@ export type PaymentMethod =
   | 'DIGITAL'
   | 'CASH_ON_DELIVERY'
   | 'CASH_ON_PICKUP'
-  | 'EFT';
+  | 'EFT'
+  | 'PAYMENT_LINK';
 
 export interface User {
   id: string;

@@ -36,7 +36,7 @@ const proofStatusClasses: Record<ProofStatus, string> = {
 export function VendorWhatsAppScreen() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const vendorId = user?.id ? `vendor_${user.id}` : DEMO_VENDOR_ID;
+  const vendorId = user?.id || DEMO_VENDOR_ID;
 
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,6 +59,9 @@ export function VendorWhatsAppScreen() {
     () => orders.filter((order) => order.paymentMethod === 'EFT'),
     [orders]
   );
+  const pendingProofCount = proofs.filter((proof) => proof.status === 'PENDING_REVIEW').length;
+  const verifiedProofCount = proofs.filter((proof) => proof.status === 'VERIFIED').length;
+  const flaggedProofCount = proofs.filter((proof) => proof.status === 'FLAGGED').length;
 
   useEffect(() => {
     async function load() {
@@ -175,6 +178,22 @@ export function VendorWhatsAppScreen() {
       </div>
 
       <div className="space-y-5">
+        <section className="bg-white rounded-xl border border-stone-100 p-4 space-y-3">
+          <h2 className="font-semibold text-stone-800 text-sm uppercase tracking-wide">
+            Module Detail
+          </h2>
+          <p className="text-sm text-stone-600">
+            This module is your detailed operational view for WhatsApp ordering and EFT validation.
+            Link each proof to the correct order and keep review statuses up to date for accounting clarity.
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <MiniStat label="EFT Orders" value={eftOrders.length} />
+            <MiniStat label="Pending Review" value={pendingProofCount} />
+            <MiniStat label="Verified" value={verifiedProofCount} />
+            <MiniStat label="Flagged" value={flaggedProofCount} />
+          </div>
+        </section>
+
         {/* WhatsApp ordering setup info */}
         <section className="bg-white rounded-xl border border-stone-100 p-4 space-y-3">
           <div className="flex items-center gap-2">
@@ -464,6 +483,15 @@ export function VendorWhatsAppScreen() {
           )}
         </section>
       </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+      <div className="text-xs text-stone-500">{label}</div>
+      <div className="text-lg font-semibold text-stone-900">{value}</div>
     </div>
   );
 }

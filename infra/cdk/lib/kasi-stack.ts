@@ -182,6 +182,18 @@ export class KasiStack extends Stack {
             description: 'Platform admins',
         });
 
+        new cognito.CfnUserPoolGroup(this, 'SuperAdminGroup', {
+            userPoolId: userPool.userPoolId,
+            groupName: 'SUPER_ADMIN',
+            description: 'Full-access platform super administrators',
+        });
+
+        new cognito.CfnUserPoolGroup(this, 'DevGroup', {
+            userPoolId: userPool.userPoolId,
+            groupName: 'DEV',
+            description: 'Engineering and development users',
+        });
+
         const userPoolClient = new cognito.UserPoolClient(this, 'KasiWebClient', {
             userPool,
             userPoolClientName: `kasi-web-${stage}`,
@@ -284,6 +296,9 @@ export class KasiStack extends Stack {
         jsResolver('Query', 'getAllOrders', 'Query.getAllOrders.js', ddbSource);
         jsResolver('Query', 'getNearbyVendors', 'Query.getNearbyVendors.js', ddbSource);
         jsResolver('Query', 'getVendorReviews', 'Query.getVendorReviews.js', ddbSource);
+        jsResolver('Query', 'getOrderPaymentProofs', 'Query.getOrderPaymentProofs.js', ddbSource);
+        jsResolver('Query', 'getVendorRevenue', 'Query.getVendorRevenue.js', ddbSource);
+        jsResolver('Query', 'getVendorInventory', 'Query.getVendorInventory.js', ddbSource);
         jsResolver(
             'Query',
             'getPendingVendorApplications',
@@ -306,6 +321,14 @@ export class KasiStack extends Stack {
         );
         jsResolver('Mutation', 'cancelOrder', 'Mutation.cancelOrder.js', ddbSource);
         jsResolver('Mutation', 'createReview', 'Mutation.createReview.js', ddbSource);
+        jsResolver(
+            'Mutation',
+            'saveWhatsAppPaymentProof',
+            'Mutation.saveWhatsAppPaymentProof.js',
+            ddbSource
+        );
+        jsResolver('Mutation', 'recordRevenue', 'Mutation.recordRevenue.js', ddbSource);
+        jsResolver('Mutation', 'upsertInventoryItem', 'Mutation.upsertInventoryItem.js', ddbSource);
         jsResolver(
             'Mutation',
             'createVendorApplication',

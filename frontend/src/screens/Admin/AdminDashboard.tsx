@@ -8,7 +8,7 @@ import type { VendorApplication, Order } from '../../types';
 import { displayOrderNumber } from '../../domain/orderNumber';
 
 export function AdminDashboard() {
-  const [tab, setTab] = useState<'applications' | 'orders'>('applications');
+  const [tab, setTab] = useState<'overview' | 'applications' | 'orders'>('overview');
   const [applications, setApplications] = useState<VendorApplication[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +69,16 @@ export function AdminDashboard() {
   }
 
   const pendingApps = applications.filter((a) => a.status === 'PENDING');
+  const approvedApps = applications.filter((a) => a.status === 'APPROVED');
+  const rejectedApps = applications.filter((a) => a.status === 'REJECTED');
+  const activeOrders = orders.filter((o) => !['COMPLETED', 'CANCELLED'].includes(o.status));
+  const completedOrders = orders.filter((o) => o.status === 'COMPLETED');
+  const pendingPaymentOrders = orders.filter((o) => o.paymentStatus !== 'PAID');
+  const totalRevenue = orders.reduce((sum, order) => sum + order.totalAmount, 0);
+  const todayOrders = orders.filter((o) => {
+    const today = new Date().toDateString();
+    return new Date(o.createdAt).toDateString() === today;
+  });
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 pb-8">
@@ -81,20 +91,99 @@ export function AdminDashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard label="Pending Applications" value={pendingApps.length} icon={<Clock size={20} />} color="text-yellow-600 bg-yellow-50" />
         <StatCard label="Total Orders" value={orders.length} icon={<ShoppingBag size={20} />} color="text-blue-600 bg-blue-50" />
-        <StatCard label="Active Orders" value={orders.filter((o) => !['COMPLETED', 'CANCELLED'].includes(o.status)).length} icon={<Store size={20} />} color="text-orange-600 bg-orange-50" />
-        <StatCard label="Approved Vendors" value={applications.filter((a) => a.status === 'APPROVED').length} icon={<Users size={20} />} color="text-green-600 bg-green-50" />
+        <StatCard label="Active Orders" value={activeOrders.length} icon={<Store size={20} />} color="text-orange-600 bg-orange-50" />
+        <StatCard label="Approved Vendors" value={approvedApps.length} icon={<Users size={20} />} color="text-green-600 bg-green-50" />
       </div>
 
       {/* Tabs */}
       <div className="flex bg-stone-100 rounded-xl p-1 mb-5">
+        <TabButton label="Overview" active={tab === 'overview'} onClick={() => setTab('overview')} />
         <TabButton label={`Applications (${pendingApps.length})`} active={tab === 'applications'} onClick={() => setTab('applications')} />
         <TabButton label={`All Orders (${orders.length})`} active={tab === 'orders'} onClick={() => setTab('orders')} />
       </div>
 
       {loading ? (
         <LoadingSpinner className="py-10" />
+      ) : tab === 'overview' ? (
+        <div className="space-y-5">
+          <section className="bg-white rounded-xl border border-stone-100 p-4">
+            <h3 className="font-semibold text-stone-900">Operator Overview</h3>
+            <p className="mt-1 text-sm text-stone-500">
+              This dashboard is your high-level control center. Use each module for deeper review and action when needed.
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <ModuleOverviewRow
+                title="Vendor Applications"
+                summary={`${pendingApps.length} pending, ${approvedApps.length} approved, ${rejectedApps.length} rejected`}
+                detail="Review onboarding quality, approve qualified vendors, and keep rejection reasons consistent."
+                actionLabel="Open Applications"
+                onClick={() => setTab('applications')}
+              />
+              <ModuleOverviewRow
+                title="Order Oversight"
+                summary={`${activeOrders.length} active, ${todayOrders.length} today, R${totalRevenue.toFixed(0)} total tracked`}
+                detail="Monitor platform throughput, check payment state, and verify order lifecycle health across vendors."
+                actionLabel="Open Orders"
+                onClick={() => setTab('orders')}
+              />
+            </div>
+          </section>
+
+          <section className="grid gap-4 lg:grid-cols-2">
+            <div className="bg-white rounded-xl border border-stone-100 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-stone-900">Recent Applications</h3>
+                  <p className="text-sm text-stone-500">Quick view before opening full onboarding queue</p>
+                </div>
+                <Button size="sm" variant="secondary" onClick={() => setTab('applications')}>
+                  View Queue
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {applications.length === 0 ? (
+                  <p className="text-sm text-stone-400 py-4">No applications yet.</p>
+                ) : (
+                  applications.slice(0, 3).map((app) => <CompactApplicationRow key={app.id} application={app} />)
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-stone-100 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-stone-900">Recent Orders</h3>
+                  <p className="text-sm text-stone-500">Latest platform orders and current statuses</p>
+                </div>
+                <Button size="sm" variant="secondary" onClick={() => setTab('orders')}>
+                  View Orders
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {orders.length === 0 ? (
+                  <p className="text-sm text-stone-400 py-4">No orders yet.</p>
+                ) : (
+                  orders.slice(0, 3).map((order) => <CompactAdminOrderRow key={order.id} order={order} />)
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
       ) : tab === 'applications' ? (
         <div className="space-y-4">
+          <section className="bg-white rounded-xl border border-stone-100 p-4">
+            <h3 className="font-semibold text-stone-900">Application Review Detail</h3>
+            <p className="mt-1 text-sm text-stone-500">
+              Use this module to process vendor onboarding with clear decisions and consistent standards.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <MiniStat label="Pending" value={pendingApps.length} />
+              <MiniStat label="Approved" value={approvedApps.length} />
+              <MiniStat label="Rejected" value={rejectedApps.length} />
+              <MiniStat label="Total" value={applications.length} />
+            </div>
+          </section>
+
           {applications.length === 0 ? (
             <p className="text-center text-stone-400 py-8">No applications yet.</p>
           ) : (
@@ -111,6 +200,19 @@ export function AdminDashboard() {
         </div>
       ) : (
         <div className="space-y-3">
+          <section className="bg-white rounded-xl border border-stone-100 p-4">
+            <h3 className="font-semibold text-stone-900">Order Monitoring Detail</h3>
+            <p className="mt-1 text-sm text-stone-500">
+              This module is the detailed operational feed for order status, payment state, and platform activity trends.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <MiniStat label="Active" value={activeOrders.length} />
+              <MiniStat label="Completed" value={completedOrders.length} />
+              <MiniStat label="Pending Payment" value={pendingPaymentOrders.length} />
+              <MiniStat label="Today" value={todayOrders.length} />
+            </div>
+          </section>
+
           {orders.length === 0 ? (
             <p className="text-center text-stone-400 py-8">No orders yet.</p>
           ) : (
@@ -120,6 +222,40 @@ export function AdminDashboard() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function ModuleOverviewRow({
+  title,
+  summary,
+  detail,
+  actionLabel,
+  onClick,
+}: {
+  title: string;
+  summary: string;
+  detail: string;
+  actionLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+      <div className="text-sm font-semibold text-stone-900">{title}</div>
+      <div className="mt-1 text-xs font-medium text-kasi-orange">{summary}</div>
+      <p className="mt-2 text-xs text-stone-500">{detail}</p>
+      <Button size="sm" variant="secondary" className="mt-3" onClick={onClick}>
+        {actionLabel}
+      </Button>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+      <div className="text-xs text-stone-500">{label}</div>
+      <div className="text-lg font-semibold text-stone-900">{value}</div>
     </div>
   );
 }
@@ -234,6 +370,39 @@ function StatusPill({ status }: { status: string }) {
     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${config[status] || ''}`}>
       {status}
     </span>
+  );
+}
+
+function CompactApplicationRow({ application }: { application: VendorApplication }) {
+  return (
+    <div className="rounded-xl border border-stone-100 bg-stone-50 px-3 py-3 flex items-center justify-between gap-3">
+      <div>
+        <div className="font-semibold text-sm text-stone-900">{application.businessName}</div>
+        <div className="text-xs text-stone-500 mt-0.5">
+          {application.applicantName} • {application.phone}
+        </div>
+      </div>
+      <StatusPill status={application.status} />
+    </div>
+  );
+}
+
+function CompactAdminOrderRow({ order }: { order: Order }) {
+  return (
+    <div className="rounded-xl border border-stone-100 bg-stone-50 px-3 py-3 flex items-center justify-between gap-3">
+      <div>
+        <div className="font-semibold text-sm text-stone-900">#{displayOrderNumber(order)}</div>
+        <div className="text-xs text-stone-500 mt-0.5">
+          {order.guestDetails
+            ? `${order.guestDetails.name} • Guest`
+            : `User #${order.customerId?.slice(-6) || 'N/A'}`}
+        </div>
+      </div>
+      <div className="text-right">
+        <div className="font-semibold text-kasi-orange">R{order.totalAmount.toFixed(2)}</div>
+        <div className="text-xs text-stone-500">{order.status.replace(/_/g, ' ')}</div>
+      </div>
+    </div>
   );
 }
 

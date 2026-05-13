@@ -14,7 +14,7 @@ export function VendorMenuEditorScreen() {
   const navigate = useNavigate();
   const { menuItemId } = useParams<{ menuItemId: string }>();
   const { user } = useAuthStore();
-  const vendorId = user?.id ? `vendor_${user.id}` : DEMO_VENDOR_ID;
+  const vendorId = user?.id || DEMO_VENDOR_ID;
   const isEditMode = Boolean(menuItemId);
 
   const [loading, setLoading] = useState(isEditMode);
@@ -143,6 +143,21 @@ export function VendorMenuEditorScreen() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        <section className="bg-white rounded-xl border border-stone-100 p-4 space-y-2">
+          <h2 className="font-semibold text-stone-800 text-sm uppercase tracking-wide">
+            Module Detail
+          </h2>
+          <p className="text-sm text-stone-600">
+            This page controls one menu item in detail. Changes made here immediately affect how
+            customers see pricing, descriptions, and item availability across web and WhatsApp views.
+          </p>
+          <ul className="text-xs text-stone-500 space-y-1 list-disc pl-4">
+            <li>Use clear names and descriptions so customers understand portions and ingredients.</li>
+            <li>Keep price formatting consistent so checkout totals remain predictable.</li>
+            <li>Set unavailable items to Hidden instead of deleting if stock is temporary.</li>
+          </ul>
+        </section>
+
         <section className="bg-white rounded-xl border border-stone-100 p-4 space-y-4">
           <Input
             label="Item Name *"

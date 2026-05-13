@@ -112,12 +112,63 @@
         "paymentMethod", "paymentStatus", "contactPhone",
         "specialInstructions", "source", "createdAt", "updatedAt"
       ],
-      "_note": "orderNumber is the human-facing per-vendor identifier (e.g. KOTA-260430-0017); paymentRef is the bank-friendly variant (e.g. KOTA2604300017) used for EFT and PayFast references."
+      "_note": "orderNumber is the human-facing per-vendor identifier (e.g. KOTA-260430-0017); paymentRef is the bank-friendly variant (e.g. KOTA2604300017) used for EFT and PayFast references. Suggested bucket mapping: incoming=PENDING/ACCEPTED, outgoing=PREPARING/READY/OUT_FOR_DELIVERY, completed=COMPLETED (and CANCELLED for exceptions)."
     },
     "OrderItem": {
       "PK": "ORDER#<orderId>",
       "SK": "ITEM#<itemId>",
       "attributes": ["menuItemId", "name", "price", "quantity"]
+    },
+    "PaymentProof": {
+      "PK": "ORDER#<orderId>",
+      "SK": "POP#<paymentProofId>",
+      "attributes": [
+        "vendorId",
+        "senderPhone",
+        "senderName",
+        "amount",
+        "reference",
+        "note",
+        "attachmentName",
+        "channel",
+        "status",
+        "receivedAt",
+        "createdAt",
+        "updatedAt"
+      ],
+      "_note": "Stores WhatsApp proof-of-payment (PoP) metadata. Media file URLs/keys can be attached in note or added as a future s3Key attribute."
+    },
+    "RevenueEntry": {
+      "PK": "VENDOR#<vendorId>",
+      "SK": "REV#<saleDate>#<entryId>",
+      "attributes": [
+        "orderId",
+        "source",
+        "grossAmount",
+        "netAmount",
+        "paymentMethod",
+        "note",
+        "saleDate",
+        "createdBy",
+        "createdAt"
+      ],
+      "_note": "Supports manual sales capture and ERP-style financial tracking per vendor."
+    },
+    "InventoryItem": {
+      "PK": "VENDOR#<vendorId>",
+      "SK": "INV#<inventoryItemId>",
+      "attributes": [
+        "name",
+        "sku",
+        "unit",
+        "quantityOnHand",
+        "reorderLevel",
+        "unitCost",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ],
+      "_note": "Inventory baseline for future ERP integrations, stock alerts, and procurement workflows."
     },
     "Session": {
       "PK": "SESSION#<customerPhone>",

@@ -4,6 +4,7 @@ import {
   createWhatsAppSimSession,
   formatMenuForWhatsApp,
   processWhatsAppSimMessage,
+  type WhatsAppBankingDetails,
   type WhatsAppMenuItem,
   type WhatsAppPaymentMethod,
   type WhatsAppSimSession,
@@ -14,6 +15,8 @@ interface WhatsAppMenuPreviewProps {
   menuItems: WhatsAppMenuItem[];
   /** WhatsApp number this preview represents (purely cosmetic). */
   whatsappNumber?: string;
+  /** Vendor banking details shown to the customer when they choose EFT. */
+  bankingDetails?: WhatsAppBankingDetails;
   /** Fired when the simulated checkout completes. */
   onSimulatedOrder?: (order: {
     orderId: string;
@@ -40,6 +43,7 @@ export function WhatsAppMenuPreview({
   vendorName,
   menuItems,
   whatsappNumber,
+  bankingDetails,
   onSimulatedOrder,
 }: WhatsAppMenuPreviewProps) {
   const initialMenuMessage = useMemo(
@@ -84,7 +88,8 @@ export function WhatsAppMenuPreview({
       session,
       vendorName || 'Your Shop',
       menuItems,
-      trimmed
+      trimmed,
+      bankingDetails
     );
 
     const stamp = Date.now();
@@ -247,6 +252,8 @@ function inputPlaceholder(session: WhatsAppSimSession): string {
       return 'Type your full name';
     case 'PAYMENT':
       return 'Reply 1, 2 or 3';
+    case 'EFT_BANKING':
+      return 'Reply OK once payment is made';
     case 'DONE':
       return 'Reply 0 to start a new order';
     default:
@@ -274,6 +281,8 @@ function buildQuickReplies(
         { label: '2 · EFT', value: '2' },
         { label: '3 · Cash delivery', value: '3' },
       ];
+    case 'EFT_BANKING':
+      return [{ label: 'OK · Payment made', value: 'OK' }];
     case 'DONE':
       return [{ label: '0 · New order', value: '0' }];
     default:
@@ -291,6 +300,8 @@ function stepLabel(step: WhatsAppSimSession['step']): string {
       return 'awaiting name';
     case 'PAYMENT':
       return 'awaiting payment';
+    case 'EFT_BANKING':
+      return 'awaiting EFT';
     case 'DONE':
       return 'order confirmed';
   }

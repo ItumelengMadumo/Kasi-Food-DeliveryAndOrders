@@ -7,31 +7,45 @@
 
 import { Amplify } from 'aws-amplify';
 
-const awsConfig = {
-  Auth: {
-    Cognito: {
-      userPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID || 'us-east-1_XXXXXXXXX',
-      userPoolClientId:
-        import.meta.env.VITE_COGNITO_CLIENT_ID || 'xxxxxxxxxxxxxxxxxxxxxxxxxx',
-      signUpVerificationMethod: 'code' as const,
-      loginWith: {
-        email: true,
-        phone: true,
-        username: true,
+function isPlaceholder(value: string | undefined) {
+  if (!value) return true;
+  return /x{5,}|your-|placeholder/i.test(value);
+}
+
+/**
+ * Configure Amplify if real env vars are present.
+ * Returns true when configured, false when skipped.
+ */
+export function configureAmplify(): boolean {
+  const region = import.meta.env.VITE_AWS_REGION || 'us-east-1';
+  const userPoolId = import.meta.env.VITE_COGNITO_USER_POOL_ID;
+  const userPoolClientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
+  const endpoint = import.meta.env.VITE_APPSYNC_ENDPOINT;
+
+  if (isPlaceholder(userPoolId) || isPlaceholder(userPoolClientId)) {
+    console.info(
+      '[Amplify] Missing Cognito env vars. Authentication and cloud API calls are disabled until these are configured.\n' +
+      'Copy frontend/.env.example to frontend/.env and set real AWS values.'
+    );
+    return false;
+  }
+
+  Amplify.configure({
+    Auth: {
+      Cognito: {
+        userPoolId: userPoolId!,
+        userPoolClientId: userPoolClientId!,
+        signUpVerificationMethod: 'code' as const,
+        loginWith: { email: true, phone: true, username: true },
       },
     },
-  },
-  API: {
-    GraphQL: {
-      endpoint:
-        import.meta.env.VITE_APPSYNC_ENDPOINT ||
-        'https://xxxxxxxxxx.appsync-api.us-east-1.amazonaws.com/graphql',
-      region: import.meta.env.VITE_AWS_REGION || 'us-east-1',
-      defaultAuthMode: 'userPool' as const,
+    API: {
+      GraphQL: {
+        endpoint: endpoint || '',
+        region,
+        defaultAuthMode: 'userPool' as const,
+      },
     },
-  },
-};
-
-export function configureAmplify() {
-  Amplify.configure(awsConfig);
+  });
+  return true;
 }

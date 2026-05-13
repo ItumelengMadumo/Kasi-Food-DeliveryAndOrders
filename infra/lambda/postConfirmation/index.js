@@ -29,7 +29,7 @@ const cog = new CognitoIdentityProviderClient({});
 
 const TABLE_NAME = process.env.TABLE_NAME || 'KasiMainTable';
 
-const VALID_ROLES = ['CUSTOMER', 'VENDOR', 'ADMIN'];
+const VALID_ROLES = ['CUSTOMER', 'VENDOR', 'ADMIN', 'SUPER_ADMIN', 'DEV'];
 
 function pickRole(attrs) {
   const raw = (attrs['custom:role'] || '').toUpperCase();
@@ -151,17 +151,19 @@ exports.handler = async (event) => {
   } else {
     await ddb.send(new PutCommand({ TableName: TABLE_NAME, Item: userRecord }));
 
-    if (role === 'ADMIN') {
+    if (role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'DEV') {
       try {
+        const groupName =
+          role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : role === 'DEV' ? 'DEV' : 'ADMIN';
         await cog.send(
           new AdminAddUserToGroupCommand({
             UserPoolId: userPoolId,
             Username: username,
-            GroupName: 'ADMIN',
+            GroupName: groupName,
           })
         );
       } catch (err) {
-        console.warn('Failed to add user to ADMIN group:', err.message);
+        console.warn(`Failed to add user to ${role} group:`, err.message);
       }
     }
   }

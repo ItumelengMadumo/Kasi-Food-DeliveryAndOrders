@@ -17,7 +17,15 @@ import type {
   BankDetails,
 } from '../types';
 
-export const client = generateClient();
+// Lazy singleton — generateClient() requires Amplify.configure() to have run first.
+// We defer the call until the first actual API request.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _client: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function client(): any {
+  if (!_client) _client = generateClient();
+  return _client;
+}
 
 // ── Vendor Queries ────────────────────────────────
 
@@ -32,7 +40,7 @@ export async function getVendor(vendorId: string): Promise<Vendor | null> {
       }
     }
   `;
-  const result = await client.graphql({ query, variables: { vendorId } });
+  const result = await client().graphql({ query, variables: { vendorId } });
   return (result as { data: { getVendor: Vendor | null } }).data.getVendor;
 }
 
@@ -47,7 +55,7 @@ export async function getAllVendors(status?: VendorStatus): Promise<Vendor[]> {
       }
     }
   `;
-  const result = await client.graphql({ query, variables: { status } });
+  const result = await client().graphql({ query, variables: { status } });
   return (result as { data: { getAllVendors: Vendor[] } }).data.getAllVendors;
 }
 
@@ -65,7 +73,7 @@ export async function getNearbyVendors(
       }
     }
   `;
-  const result = await client.graphql({
+  const result = await client().graphql({
     query,
     variables: { location: { lat, lng }, radiusKm },
   });
@@ -82,7 +90,7 @@ export async function getVendorMenu(vendorId: string): Promise<MenuItem[]> {
       }
     }
   `;
-  const result = await client.graphql({ query, variables: { vendorId } });
+  const result = await client().graphql({ query, variables: { vendorId } });
   return (result as { data: { getVendorMenu: MenuItem[] } }).data.getVendorMenu;
 }
 
@@ -100,7 +108,7 @@ export async function getOrder(orderId: string): Promise<Order | null> {
       }
     }
   `;
-  const result = await client.graphql({ query, variables: { orderId } });
+  const result = await client().graphql({ query, variables: { orderId } });
   return (result as { data: { getOrder: Order | null } }).data.getOrder;
 }
 
@@ -114,7 +122,7 @@ export async function getCustomerOrders(customerId: string): Promise<Order[]> {
       }
     }
   `;
-  const result = await client.graphql({ query, variables: { customerId } });
+  const result = await client().graphql({ query, variables: { customerId } });
   return (result as { data: { getCustomerOrders: Order[] } }).data.getCustomerOrders;
 }
 
@@ -132,7 +140,7 @@ export async function getVendorOrders(
       }
     }
   `;
-  const result = await client.graphql({ query, variables: { vendorId, status } });
+  const result = await client().graphql({ query, variables: { vendorId, status } });
   return (result as { data: { getVendorOrders: Order[] } }).data.getVendorOrders;
 }
 
@@ -159,7 +167,7 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
       }
     }
   `;
-  const result = await client.graphql({ query: mutation, variables: { input } });
+  const result = await client().graphql({ query: mutation, variables: { input } });
   return (result as { data: { createOrder: Order } }).data.createOrder;
 }
 
@@ -174,7 +182,7 @@ export async function updateOrderStatus(
       }
     }
   `;
-  const result = await client.graphql({
+  const result = await client().graphql({
     query: mutation,
     variables: { input: { orderId, status } },
   });
@@ -201,7 +209,7 @@ export async function createMenuItem(input: CreateMenuItemInput): Promise<MenuIt
       }
     }
   `;
-  const result = await client.graphql({ query: mutation, variables: { input } });
+  const result = await client().graphql({ query: mutation, variables: { input } });
   return (result as { data: { createMenuItem: MenuItem } }).data.createMenuItem;
 }
 
@@ -222,7 +230,7 @@ export async function updateMenuItem(input: {
       }
     }
   `;
-  const result = await client.graphql({ query: mutation, variables: { input } });
+  const result = await client().graphql({ query: mutation, variables: { input } });
   return (result as { data: { updateMenuItem: MenuItem } }).data.updateMenuItem;
 }
 
@@ -238,7 +246,7 @@ export async function toggleMenuItemAvailability(
       }
     }
   `;
-  const result = await client.graphql({
+  const result = await client().graphql({
     query: mutation,
     variables: { menuItemId, vendorId, available },
   });
@@ -255,7 +263,7 @@ export async function deleteMenuItem(
       deleteMenuItem(menuItemId: $menuItemId, vendorId: $vendorId)
     }
   `;
-  const result = await client.graphql({
+  const result = await client().graphql({
     query: mutation,
     variables: { menuItemId, vendorId },
   });
@@ -285,7 +293,7 @@ export async function createVendorApplication(
       }
     }
   `;
-  const result = await client.graphql({ query: mutation, variables: { input } });
+  const result = await client().graphql({ query: mutation, variables: { input } });
   return (result as { data: { createVendorApplication: VendorApplication } }).data
     .createVendorApplication;
 }
@@ -301,7 +309,7 @@ export async function getPendingVendorApplications(): Promise<VendorApplication[
       }
     }
   `;
-  const result = await client.graphql({ query });
+  const result = await client().graphql({ query });
   return (
     result as { data: { getPendingVendorApplications: VendorApplication[] } }
   ).data.getPendingVendorApplications;
@@ -315,7 +323,7 @@ export async function approveVendor(applicationId: string): Promise<Vendor> {
       }
     }
   `;
-  const result = await client.graphql({ query: mutation, variables: { applicationId } });
+  const result = await client().graphql({ query: mutation, variables: { applicationId } });
   return (result as { data: { approveVendor: Vendor } }).data.approveVendor;
 }
 
@@ -330,7 +338,7 @@ export async function rejectVendor(
       }
     }
   `;
-  const result = await client.graphql({
+  const result = await client().graphql({
     query: mutation,
     variables: { applicationId, reason },
   });
@@ -347,7 +355,7 @@ export async function getAllOrders(status?: OrderStatus): Promise<Order[]> {
       }
     }
   `;
-  const result = await client.graphql({ query, variables: { status } });
+  const result = await client().graphql({ query, variables: { status } });
   return (result as { data: { getAllOrders: Order[] } }).data.getAllOrders;
 }
 
@@ -361,7 +369,7 @@ export async function getVendorReviews(vendorId: string): Promise<Review[]> {
       }
     }
   `;
-  const result = await client.graphql({ query, variables: { vendorId } });
+  const result = await client().graphql({ query, variables: { vendorId } });
   return (result as { data: { getVendorReviews: Review[] } }).data.getVendorReviews;
 }
 
@@ -375,7 +383,7 @@ export async function markOrderPaid(orderId: string): Promise<Order> {
       }
     }
   `;
-  const result = await client.graphql({ query: mutation, variables: { orderId } });
+  const result = await client().graphql({ query: mutation, variables: { orderId } });
   return (result as { data: { markOrderPaid: Order } }).data.markOrderPaid;
 }
 
@@ -404,7 +412,7 @@ export async function updateVendorProfile(input: UpdateVendorProfileInput): Prom
       }
     }
   `;
-  const result = await client.graphql({ query: mutation, variables: { input } });
+  const result = await client().graphql({ query: mutation, variables: { input } });
   return (result as { data: { updateVendorProfile: Vendor } }).data.updateVendorProfile;
 }
 
@@ -421,7 +429,7 @@ export async function updateVendorBankDetails(
       }
     }
   `;
-  const result = await client.graphql({
+  const result = await client().graphql({
     query: mutation,
     variables: { vendorId, bankDetails },
   });
@@ -467,7 +475,7 @@ export function subscribeToNewOrders(
   onError?: (err: unknown) => void
 ): { unsubscribe: () => void } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sub = (client.graphql({
+  const sub = (client().graphql({
     query: ON_NEW_ORDER_FOR_VENDOR,
     variables: { vendorId },
   }) as any).subscribe({
@@ -492,7 +500,7 @@ export function subscribeToOrderStatus(
   onError?: (err: unknown) => void
 ): { unsubscribe: () => void } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sub = (client.graphql({
+  const sub = (client().graphql({
     query: ON_ORDER_STATUS_UPDATED,
     variables: { orderId },
   }) as any).subscribe({
@@ -506,3 +514,4 @@ export function subscribeToOrderStatus(
   });
   return sub;
 }
+

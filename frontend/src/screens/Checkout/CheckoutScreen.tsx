@@ -256,6 +256,11 @@ const PAYMENT_OPTIONS: {
     label: '💳 Digital Payment',
     description: 'Pay securely online via PayFast/EFT',
   },
+  {
+    value: 'PAYMENT_LINK',
+    label: '🔗 Payment Link',
+    description: 'The vendor will send you a payment link after confirming your order',
+  },
 ];
 
 function OrderConfirmation({ onViewOrders }: { onViewOrders: () => void }) {

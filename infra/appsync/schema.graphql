@@ -11,6 +11,8 @@ enum Role {
   CUSTOMER
   VENDOR
   ADMIN
+  SUPER_ADMIN
+  DEV
 }
 
 enum VendorStatus {
@@ -45,6 +47,17 @@ enum PaymentMethod {
   CASH_ON_DELIVERY
   CASH_ON_PICKUP
   EFT
+}
+
+enum PaymentProofStatus {
+  PENDING_REVIEW
+  VERIFIED
+  FLAGGED
+}
+
+enum InventoryStatus {
+  ACTIVE
+  INACTIVE
 }
 
 # ── Types ─────────────────────────────────────────
@@ -174,6 +187,51 @@ type VendorApplication {
   createdAt: AWSDateTime!
 }
 
+type PaymentProof {
+  id: ID!
+  orderId: ID!
+  vendorId: ID!
+  senderPhone: String!
+  senderName: String
+  amount: Float
+  reference: String
+  note: String
+  attachmentName: String!
+  channel: String!
+  status: PaymentProofStatus!
+  receivedAt: AWSDateTime!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type RevenueEntry {
+  id: ID!
+  vendorId: ID!
+  orderId: ID
+  source: String!
+  grossAmount: Float!
+  netAmount: Float
+  paymentMethod: PaymentMethod
+  note: String
+  saleDate: AWSDateTime!
+  createdBy: ID
+  createdAt: AWSDateTime!
+}
+
+type InventoryItem {
+  id: ID!
+  vendorId: ID!
+  name: String!
+  sku: String
+  unit: String
+  quantityOnHand: Float!
+  reorderLevel: Float
+  unitCost: Float
+  status: InventoryStatus!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
 # ── Input Types ────────────────────────────────────
 
 input RegisterUserInput {
@@ -270,6 +328,42 @@ input LocationInput {
   lng: Float!
 }
 
+input SaveWhatsAppPaymentProofInput {
+  orderId: ID!
+  vendorId: ID!
+  senderPhone: String!
+  senderName: String
+  amount: Float
+  reference: String
+  note: String
+  attachmentName: String!
+  status: PaymentProofStatus
+}
+
+input RecordRevenueInput {
+  vendorId: ID!
+  orderId: ID
+  source: String!
+  grossAmount: Float!
+  netAmount: Float
+  paymentMethod: PaymentMethod
+  note: String
+  saleDate: AWSDateTime
+  createdBy: ID
+}
+
+input UpsertInventoryItemInput {
+  vendorId: ID!
+  inventoryItemId: ID
+  name: String!
+  sku: String
+  unit: String
+  quantityOnHand: Float!
+  reorderLevel: Float
+  unitCost: Float
+  status: InventoryStatus
+}
+
 # ── Queries ────────────────────────────────────────
 
 type Query {
@@ -295,6 +389,15 @@ type Query {
 
   # Review queries
   getVendorReviews(vendorId: ID!): [Review!]!
+
+  # WhatsApp / payment proof queries
+  getOrderPaymentProofs(orderId: ID!): [PaymentProof!]!
+
+  # Revenue queries
+  getVendorRevenue(vendorId: ID!, fromDate: AWSDateTime, toDate: AWSDateTime): [RevenueEntry!]!
+
+  # Inventory queries
+  getVendorInventory(vendorId: ID!, status: InventoryStatus): [InventoryItem!]!
 }
 
 # ── Mutations ──────────────────────────────────────
@@ -327,6 +430,15 @@ type Mutation {
 
   # Reviews
   createReview(input: CreateReviewInput!): Review!
+
+  # WhatsApp / payment proof tracking
+  saveWhatsAppPaymentProof(input: SaveWhatsAppPaymentProofInput!): PaymentProof!
+
+  # Revenue tracking
+  recordRevenue(input: RecordRevenueInput!): RevenueEntry!
+
+  # Inventory management
+  upsertInventoryItem(input: UpsertInventoryItemInput!): InventoryItem!
 }
 
 # ── Subscriptions ──────────────────────────────────
