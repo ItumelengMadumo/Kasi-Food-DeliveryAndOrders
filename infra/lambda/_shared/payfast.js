@@ -3,16 +3,21 @@
 /**
  * PayFast signature + redirect helpers.
  *
- * Signature algorithm (per PayFast's published integration guide):
+ * Signature algorithm (per PayFast's own reference implementations, e.g.
+ * github.com/PayFast/mod-whmcs):
  *   1. Take the fields in the order they were added to the payload (NOT
- *      alphabetical), skip any that are empty/undefined, and skip `signature`.
- *   2. URL-encode each value (spaces as `+`), join as `key=value&key=value`.
+ *      alphabetical) and skip `signature` itself. Unlike ITN validation,
+ *      the outbound redirect signature INCLUDES every field even when its
+ *      value is an empty string — PayFast's own modules never skip fields,
+ *      they just urlencode(trim($val)) whatever is there.
+ *   2. URL-encode each value using PHP's urlencode() semantics (spaces as
+ *      `+`, and `! ' ( ) *  ~` percent-escaped, which JS encodeURIComponent
+ *      leaves untouched), join as `key=value&key=value`.
  *   3. If a passphrase is configured, append `&passphrase=<encoded passphrase>`.
  *   4. MD5 hex digest of the resulting string.
  *
- * The same routine is used to build the outbound redirect signature and to
- * verify an inbound ITN signature — ITN verification must use the fields in
- * the order PayFast POSTed them (URLSearchParams preserves that order).
+ * ITN verification (verifyItnSignature) skips fields PayFast didn't send at
+ * all, since the received field set is whatever PayFast's POST body contains.
  */
 
 const crypto = require('crypto');
@@ -20,15 +25,24 @@ const crypto = require('crypto');
 const PAYFAST_SANDBOX_HOST = 'sandbox.payfast.co.za';
 const PAYFAST_LIVE_HOST = 'www.payfast.co.za';
 
+/** PHP urlencode()-compatible encoding — encodeURIComponent leaves `! ' ( ) *` unescaped and `~` too; PHP escapes all of them. */
 function pfEncode(value) {
-  return encodeURIComponent(String(value).trim()).replace(/%20/g, '+');
+  return encodeURIComponent(String(value).trim())
+    .replace(/%20/g, '+')
+    .replace(/!/g, '%21')
+    .replace(/'/g, '%27')
+    .replace(/\(/g, '%28')
+    .replace(/\)/g, '%29')
+    .replace(/\*/g, '%2A')
+    .replace(/~/g, '%7E');
 }
 
-function generateSignature(orderedFields, passphrase) {
+function generateSignature(orderedFields, passphrase, { skipEmpty = false } = {}) {
   const parts = [];
   for (const [key, value] of orderedFields) {
     if (key === 'signature') continue;
-    if (value === undefined || value === null || value === '') continue;
+    if (value === undefined || value === null) continue;
+    if (skipEmpty && value === '') continue;
     parts.push(`${key}=${pfEncode(value)}`);
   }
   let str = parts.join('&');
@@ -59,27 +73,30 @@ function buildPaymentRedirect({
   nameFirst,
   nameLast,
 }) {
+  // Every field is included with an empty-string default (never omitted) —
+  // matching PayFast's own reference implementations, whose signature loop
+  // never skips a field, it just encodes whatever trim($val) produces.
   const orderedFields = [
-    ['merchant_id', merchantId],
-    ['merchant_key', merchantKey],
-    ['return_url', returnUrl],
-    ['cancel_url', cancelUrl],
-    ['notify_url', notifyUrl],
-    ['name_first', nameFirst],
-    ['name_last', nameLast],
-    ['email_address', email],
-    ['m_payment_id', paymentId],
-    ['amount', amount],
-    ['item_name', itemName],
-    ['item_description', itemDescription],
-    ['custom_str1', customStr1],
+    ['merchant_id', merchantId || ''],
+    ['merchant_key', merchantKey || ''],
+    ['return_url', returnUrl || ''],
+    ['cancel_url', cancelUrl || ''],
+    ['notify_url', notifyUrl || ''],
+    ['name_first', nameFirst || ''],
+    ['name_last', nameLast || ''],
+    ['email_address', email || ''],
+    ['m_payment_id', paymentId || ''],
+    ['amount', amount || ''],
+    ['item_name', itemName || ''],
+    ['item_description', itemDescription || ''],
+    ['custom_str1', customStr1 || ''],
   ];
 
   const signature = generateSignature(orderedFields, passphrase);
 
   const params = new URLSearchParams();
   for (const [key, value] of orderedFields) {
-    if (value !== undefined && value !== null && value !== '') params.append(key, value);
+    params.append(key, value);
   }
   params.append('signature', signature);
 
@@ -88,7 +105,7 @@ function buildPaymentRedirect({
 
 /** Verifies an ITN POST body (as an ordered array of [key, value] pairs). */
 function verifyItnSignature(orderedFields, passphrase, receivedSignature) {
-  const computed = generateSignature(orderedFields, passphrase);
+  const computed = generateSignature(orderedFields, passphrase, { skipEmpty: true });
   return computed === receivedSignature;
 }
 
