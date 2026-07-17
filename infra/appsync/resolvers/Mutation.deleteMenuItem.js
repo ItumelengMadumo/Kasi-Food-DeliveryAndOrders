@@ -6,6 +6,12 @@ import { util } from '@aws-appsync/utils';
 export function request(ctx) {
   const { menuItemId, vendorId } = ctx.args;
 
+  const groups = (ctx.identity && ctx.identity.groups) || [];
+  const isAdmin = groups.includes('ADMIN') || groups.includes('SUPER_ADMIN');
+  if (!isAdmin && (!ctx.identity || ctx.identity.sub !== vendorId)) {
+    util.unauthorized();
+  }
+
   return {
     operation: 'DeleteItem',
     key: {

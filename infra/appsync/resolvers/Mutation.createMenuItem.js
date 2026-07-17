@@ -8,6 +8,12 @@ export function request(ctx) {
   const { vendorId, name, description, price, imageUrl, category } = input;
   const available = input.available !== false;
 
+  const groups = (ctx.identity && ctx.identity.groups) || [];
+  const isAdmin = groups.includes('ADMIN') || groups.includes('SUPER_ADMIN');
+  if (!isAdmin && (!ctx.identity || ctx.identity.sub !== vendorId)) {
+    util.unauthorized();
+  }
+
   const menuItemId = util.autoId();
   const now = util.time.nowISO8601();
 

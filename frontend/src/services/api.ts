@@ -101,7 +101,7 @@ export async function getOrder(orderId: string): Promise<Order | null> {
     query GetOrder($orderId: ID!) {
       getOrder(orderId: $orderId) {
         id orderNumber paymentRef customerId vendorId status deliveryMethod deliveryFee
-        subtotal totalAmount paymentMethod paymentStatus contactPhone specialInstructions
+        subtotal totalAmount paymentMethod paymentStatus paymentProvider contactPhone specialInstructions
         createdAt updatedAt
         guestDetails { name phone }
         items { id menuItemId name price quantity }
@@ -140,7 +140,11 @@ export async function getVendorOrders(
       }
     }
   `;
-  const result = await client().graphql({ query, variables: { vendorId, status } });
+  const result = await client().graphql({
+    query,
+    variables: { vendorId, status },
+    authMode: 'userPool',
+  });
   return (result as { data: { getVendorOrders: Order[] } }).data.getVendorOrders;
 }
 
@@ -185,6 +189,7 @@ export async function updateOrderStatus(
   const result = await client().graphql({
     query: mutation,
     variables: { input: { orderId, status } },
+    authMode: 'userPool',
   });
   return (result as { data: { updateOrderStatus: Order } }).data.updateOrderStatus;
 }
@@ -209,7 +214,11 @@ export async function createMenuItem(input: CreateMenuItemInput): Promise<MenuIt
       }
     }
   `;
-  const result = await client().graphql({ query: mutation, variables: { input } });
+  const result = await client().graphql({
+    query: mutation,
+    variables: { input },
+    authMode: 'userPool',
+  });
   return (result as { data: { createMenuItem: MenuItem } }).data.createMenuItem;
 }
 
@@ -230,7 +239,11 @@ export async function updateMenuItem(input: {
       }
     }
   `;
-  const result = await client().graphql({ query: mutation, variables: { input } });
+  const result = await client().graphql({
+    query: mutation,
+    variables: { input },
+    authMode: 'userPool',
+  });
   return (result as { data: { updateMenuItem: MenuItem } }).data.updateMenuItem;
 }
 
@@ -249,6 +262,7 @@ export async function toggleMenuItemAvailability(
   const result = await client().graphql({
     query: mutation,
     variables: { menuItemId, vendorId, available },
+    authMode: 'userPool',
   });
   return (result as { data: { toggleMenuItemAvailability: MenuItem } }).data
     .toggleMenuItemAvailability;
@@ -266,6 +280,7 @@ export async function deleteMenuItem(
   const result = await client().graphql({
     query: mutation,
     variables: { menuItemId, vendorId },
+    authMode: 'userPool',
   });
   return (result as { data: { deleteMenuItem: boolean } }).data.deleteMenuItem;
 }
@@ -309,7 +324,7 @@ export async function getPendingVendorApplications(): Promise<VendorApplication[
       }
     }
   `;
-  const result = await client().graphql({ query });
+  const result = await client().graphql({ query, authMode: 'userPool' });
   return (
     result as { data: { getPendingVendorApplications: VendorApplication[] } }
   ).data.getPendingVendorApplications;
@@ -323,7 +338,11 @@ export async function approveVendor(applicationId: string): Promise<Vendor> {
       }
     }
   `;
-  const result = await client().graphql({ query: mutation, variables: { applicationId } });
+  const result = await client().graphql({
+    query: mutation,
+    variables: { applicationId },
+    authMode: 'userPool',
+  });
   return (result as { data: { approveVendor: Vendor } }).data.approveVendor;
 }
 
@@ -341,6 +360,7 @@ export async function rejectVendor(
   const result = await client().graphql({
     query: mutation,
     variables: { applicationId, reason },
+    authMode: 'userPool',
   });
   return (result as { data: { rejectVendor: VendorApplication } }).data.rejectVendor;
 }
@@ -355,7 +375,7 @@ export async function getAllOrders(status?: OrderStatus): Promise<Order[]> {
       }
     }
   `;
-  const result = await client().graphql({ query, variables: { status } });
+  const result = await client().graphql({ query, variables: { status }, authMode: 'userPool' });
   return (result as { data: { getAllOrders: Order[] } }).data.getAllOrders;
 }
 
@@ -383,7 +403,11 @@ export async function markOrderPaid(orderId: string): Promise<Order> {
       }
     }
   `;
-  const result = await client().graphql({ query: mutation, variables: { orderId } });
+  const result = await client().graphql({
+    query: mutation,
+    variables: { orderId },
+    authMode: 'userPool',
+  });
   return (result as { data: { markOrderPaid: Order } }).data.markOrderPaid;
 }
 
@@ -412,7 +436,11 @@ export async function updateVendorProfile(input: UpdateVendorProfileInput): Prom
       }
     }
   `;
-  const result = await client().graphql({ query: mutation, variables: { input } });
+  const result = await client().graphql({
+    query: mutation,
+    variables: { input },
+    authMode: 'userPool',
+  });
   return (result as { data: { updateVendorProfile: Vendor } }).data.updateVendorProfile;
 }
 
@@ -421,7 +449,7 @@ export async function updateVendorBankDetails(
   bankDetails: BankDetails
 ): Promise<Vendor> {
   const mutation = /* GraphQL */ `
-    mutation UpdateVendorBankDetails($vendorId: ID!, $bankDetails: AWSJSON!) {
+    mutation UpdateVendorBankDetails($vendorId: ID!, $bankDetails: BankDetailsInput!) {
       updateVendorBankDetails(vendorId: $vendorId, bankDetails: $bankDetails) {
         id ownerId name address contactDetails status
         deliveryType deliveryValue hasBankAccount whatsappNumber
@@ -432,8 +460,48 @@ export async function updateVendorBankDetails(
   const result = await client().graphql({
     query: mutation,
     variables: { vendorId, bankDetails },
+    authMode: 'userPool',
   });
   return (result as { data: { updateVendorBankDetails: Vendor } }).data.updateVendorBankDetails;
+}
+
+export async function getVendorBankDetails(vendorId: string): Promise<BankDetails | null> {
+  const query = /* GraphQL */ `
+    query GetVendorBankDetails($vendorId: ID!) {
+      getVendorBankDetails(vendorId: $vendorId) {
+        bankName accountNumber accountHolder branchCode
+      }
+    }
+  `;
+  const result = await client().graphql({ query, variables: { vendorId }, authMode: 'userPool' });
+  return (result as { data: { getVendorBankDetails: BankDetails | null } }).data
+    .getVendorBankDetails;
+}
+
+// ── Payments ───────────────────────────────────────
+
+export interface PaymentInitiation {
+  provider: 'PAYFAST' | 'OZOW';
+  redirectUrl: string;
+  paymentRef: string;
+}
+
+export async function initiatePayment(
+  orderId: string,
+  provider: 'PAYFAST' | 'OZOW'
+): Promise<PaymentInitiation> {
+  const mutation = /* GraphQL */ `
+    mutation InitiatePayment($orderId: ID!, $provider: PaymentProvider!) {
+      initiatePayment(orderId: $orderId, provider: $provider) {
+        provider redirectUrl paymentRef
+      }
+    }
+  `;
+  const result = await client().graphql({
+    query: mutation,
+    variables: { orderId, provider },
+  });
+  return (result as { data: { initiatePayment: PaymentInitiation } }).data.initiatePayment;
 }
 
 // ── AppSync Subscriptions ─────────────────────────
@@ -478,6 +546,7 @@ export function subscribeToNewOrders(
   const sub = (client().graphql({
     query: ON_NEW_ORDER_FOR_VENDOR,
     variables: { vendorId },
+    authMode: 'userPool',
   }) as any).subscribe({
     next: ({ data }: { data: { onNewOrderForVendor: Order } }) => {
       if (data?.onNewOrderForVendor) onNext(data.onNewOrderForVendor);

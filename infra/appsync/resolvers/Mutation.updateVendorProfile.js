@@ -6,6 +6,12 @@ export function request(ctx) {
   const { input } = ctx.args;
   const { vendorId } = input;
 
+  const groups = (ctx.identity && ctx.identity.groups) || [];
+  const isAdmin = groups.includes('ADMIN') || groups.includes('SUPER_ADMIN');
+  if (!isAdmin && (!ctx.identity || ctx.identity.sub !== vendorId)) {
+    util.unauthorized();
+  }
+
   const setExpr = [];
   const names = {};
   const values = {};

@@ -4,10 +4,10 @@ import { ArrowLeft, CheckCircle } from 'lucide-react';
 import { useCartStore } from '../../state/cartStore';
 import { useAuthStore } from '../../state/authStore';
 import { useOrderStore } from '../../state/orderStore';
-import { createOrder } from '../../services/api';
+import { createOrder, initiatePayment } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Input, Textarea } from '../../components/ui/Input';
-import type { DeliveryMethod, PaymentMethod } from '../../types';
+import type { DeliveryMethod, PaymentMethod, PaymentProvider } from '../../types';
 
 type CheckoutStep = 'details' | 'payment' | 'confirm';
 
@@ -26,6 +26,7 @@ export function CheckoutScreen() {
   const [guestPhone, setGuestPhone] = useState(user?.phone || '');
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('DELIVERY');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH_ON_DELIVERY');
+  const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>('PAYFAST');
   const [specialInstructions, setSpecialInstructions] = useState('');
 
   // Validation
@@ -78,30 +79,25 @@ export function CheckoutScreen() {
         items: orderItems,
       });
 
+      if (paymentMethod === 'DIGITAL') {
+        // Redirect to the gateway — don't show the confirmation screen until
+        // the customer has actually paid (the webhook flips paymentStatus).
+        const { redirectUrl } = await initiatePayment(order.id, paymentProvider);
+        clearCart();
+        window.location.href = redirectUrl;
+        return;
+      }
+
       setActiveOrder(order);
       clearCart();
       setStep('confirm');
     } catch (err: unknown) {
       console.error('Order failed:', err);
-      // In demo mode, simulate success
-      setActiveOrder({
-        id: `demo-${Date.now()}`,
-        vendorId: vendorId!,
-        customerId: user?.id,
-        guestDetails: isGuest ? { name: guestName, phone: guestPhone } : undefined,
-        status: 'PENDING',
-        deliveryMethod,
-        deliveryFee,
-        subtotal: subtotal(),
-        totalAmount: total,
-        paymentMethod,
-        contactPhone: user?.phone || guestPhone,
-        specialInstructions: specialInstructions || undefined,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      clearCart();
-      setStep('confirm');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Something went wrong placing your order. Please try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -185,6 +181,25 @@ export function CheckoutScreen() {
               </button>
             ))}
           </div>
+
+          {paymentMethod === 'DIGITAL' && (
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              {(['PAYFAST', 'OZOW'] as PaymentProvider[]).map((provider) => (
+                <button
+                  key={provider}
+                  type="button"
+                  onClick={() => setPaymentProvider(provider)}
+                  className={`p-3 rounded-xl border-2 text-sm font-semibold transition-colors ${
+                    paymentProvider === provider
+                      ? 'border-kasi-orange bg-orange-50 text-kasi-orange'
+                      : 'border-stone-200 text-stone-600 hover:border-stone-300'
+                  }`}
+                >
+                  {provider === 'PAYFAST' ? 'PayFast' : 'Ozow'}
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Special instructions */}

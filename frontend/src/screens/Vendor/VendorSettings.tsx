@@ -4,20 +4,19 @@ import { ArrowLeft, Save, Smartphone } from 'lucide-react';
 import { useAuthStore } from '../../state/authStore';
 import {
   getVendor,
+  getVendorBankDetails,
   updateVendorBankDetails,
   updateVendorProfile,
 } from '../../services/api';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { LoadingSpinner } from '../../components/ui/Card';
-import type { BankDetails, Vendor } from '../../types';
-
-const DEMO_VENDOR_ID = 'demo-vendor-1';
+import type { Vendor } from '../../types';
 
 export function VendorSettings() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const vendorId = user?.id || DEMO_VENDOR_ID;
+  const vendorId = user?.id;
 
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,13 +39,16 @@ export function VendorSettings() {
   const [accountHolder, setAccountHolder] = useState('');
   const [branchCode, setBranchCode] = useState('');
 
-  const bankStorageKey = `kasi-vendor-bank-${vendorId}`;
-
   useEffect(() => {
+    if (!vendorId) return;
     async function load() {
       setLoading(true);
+      setError('');
       try {
-        const v = await getVendor(vendorId);
+        const [v, bank] = await Promise.all([
+          getVendor(vendorId!),
+          getVendorBankDetails(vendorId!).catch(() => null),
+        ]);
         if (v) {
           setVendor(v);
           setName(v.name || '');
@@ -54,48 +56,32 @@ export function VendorSettings() {
           setContactDetails(v.contactDetails || '');
           setWhatsappNumber(v.whatsappNumber || '');
           setDescription(v.description || '');
-          hydrateBankDetails(v.bankDetails);
         }
-      } catch {
-        // Demo mode: pre-fill with placeholder values
-        setName('My Restaurant');
-        setAddress('123 Main St, Soweto');
-        setContactDetails('+27 72 000 0000');
+        setBankName(bank?.bankName || '');
+        setAccountNumber(bank?.accountNumber || '');
+        setAccountHolder(bank?.accountHolder || '');
+        setBranchCode(bank?.branchCode || '');
+      } catch (err) {
+        console.error('Failed to load vendor settings:', err);
+        setError('Could not load your business settings. Please refresh and try again.');
       } finally {
-        hydrateBankDetailsFromStorage();
         setLoading(false);
       }
     }
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
-
-  function hydrateBankDetails(details?: BankDetails) {
-    setBankName(details?.bankName || '');
-    setAccountNumber(details?.accountNumber || '');
-    setAccountHolder(details?.accountHolder || '');
-    setBranchCode(details?.branchCode || '');
-  }
-
-  function hydrateBankDetailsFromStorage() {
-    try {
-      const saved = localStorage.getItem(bankStorageKey);
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as Partial<BankDetails>;
-      setBankName((current) => current || parsed.bankName || '');
-      setAccountNumber((current) => current || parsed.accountNumber || '');
-      setAccountHolder((current) => current || parsed.accountHolder || '');
-      setBranchCode((current) => current || parsed.branchCode || '');
-    } catch {
-      return;
-    }
-  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setSaving(true);
     setSaved(false);
+
+    if (!vendorId) {
+      setError('You must be signed in as a vendor to save settings.');
+      setSaving(false);
+      return;
+    }
 
     if (whatsappNumber && !/^\+\d{8,15}$/.test(whatsappNumber.replace(/\s/g, ''))) {
       setError('WhatsApp number must be in international format, e.g. +27721234567');
@@ -121,29 +107,16 @@ export function VendorSettings() {
       };
 
       if (Object.values(bankPayload).some(Boolean)) {
-        localStorage.setItem(bankStorageKey, JSON.stringify(bankPayload));
-        try {
-          await updateVendorBankDetails(vendorId, bankPayload);
-        } catch {
-          // Keep local persistence when backend bank details are unavailable.
-        }
+        await updateVendorBankDetails(vendorId, bankPayload);
       }
 
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch {
-      // Demo mode: show success anyway
-      const bankPayload = {
-        bankName: bankName.trim(),
-        accountNumber: accountNumber.trim(),
-        accountHolder: accountHolder.trim(),
-        branchCode: branchCode.trim(),
-      };
-      if (Object.values(bankPayload).some(Boolean)) {
-        localStorage.setItem(bankStorageKey, JSON.stringify(bankPayload));
-      }
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      console.error('Failed to save vendor settings:', err);
+      setError(
+        err instanceof Error ? err.message : 'Could not save your settings. Please try again.'
+      );
     } finally {
       setSaving(false);
     }

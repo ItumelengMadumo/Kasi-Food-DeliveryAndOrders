@@ -14,5 +14,8 @@
     "express": "^5.2.1",
     "twilio": "^6.0.0",
     "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.5"
   }
 }

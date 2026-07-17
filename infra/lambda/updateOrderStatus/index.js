@@ -57,6 +57,15 @@ exports.handler = async (event) => {
   const order = orderResult.Item;
   const currentStatus = order.status;
 
+  // Ownership check: only the owning vendor (Cognito sub === vendorId) or an
+  // ADMIN/SUPER_ADMIN may change this order's status.
+  const identity = event.identity || {};
+  const groups = identity.groups || [];
+  const isAdmin = groups.includes('ADMIN') || groups.includes('SUPER_ADMIN');
+  if (!isAdmin && identity.sub !== order.vendorId) {
+    throw new Error('Not authorized to update this order');
+  }
+
   // Validate transition
   const allowedTransitions = VALID_TRANSITIONS[currentStatus] || [];
   if (!allowedTransitions.includes(status)) {

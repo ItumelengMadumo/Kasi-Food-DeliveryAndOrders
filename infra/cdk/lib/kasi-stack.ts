@@ -7,6 +7,7 @@ import {
     Duration,
     CfnOutput,
     Expiration,
+    SecretValue,
 } from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
@@ -14,9 +15,14 @@ import * as appsync from 'aws-cdk-lib/aws-appsync';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
+import * as apigwv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 
 export interface KasiStackProps extends StackProps {
     stage: string;
+    /** Public URL customers land on after a gateway redirect, e.g. the Amplify Hosting domain. */
+    frontendUrl: string;
 }
 
 /**
@@ -39,7 +45,7 @@ export class KasiStack extends Stack {
     constructor(scope: Construct, id: string, props: KasiStackProps) {
         super(scope, id, props);
 
-        const { stage } = props;
+        const { stage, frontendUrl } = props;
 
         // ─────────────────────────────────────────────────────────────
         // DynamoDB
@@ -79,6 +85,10 @@ export class KasiStack extends Stack {
         // Lambdas
         // ─────────────────────────────────────────────────────────────
         const lambdaSrcRoot = path.join(__dirname, '..', '..', 'lambda');
+        // infra/lambda is a sibling of infra/cdk, not nested under it — esbuild's
+        // default projectRoot inference requires every `entry` to live under
+        // projectRoot, so it must be pinned to infra/ (the common ancestor).
+        const lambdaProjectRoot = path.join(__dirname, '..', '..');
 
         // Post-confirmation Cognito trigger — auto-creates Vendor record for
         // VENDOR-role sign-ups so the first dashboard load finds a real record.
@@ -86,6 +96,7 @@ export class KasiStack extends Stack {
             functionName: `kasi-post-confirmation-${stage}`,
             runtime: lambda.Runtime.NODEJS_20_X,
             entry: path.join(lambdaSrcRoot, 'postConfirmation', 'index.js'),
+            projectRoot: lambdaProjectRoot,
             handler: 'handler',
             timeout: Duration.seconds(10),
             environment: {
@@ -108,6 +119,7 @@ export class KasiStack extends Stack {
             functionName: `kasi-create-order-${stage}`,
             runtime: lambda.Runtime.NODEJS_20_X,
             entry: path.join(lambdaSrcRoot, 'createOrder', 'index.js'),
+            projectRoot: lambdaProjectRoot,
             handler: 'handler',
             timeout: Duration.seconds(15),
             environment: {
@@ -127,6 +139,7 @@ export class KasiStack extends Stack {
             functionName: `kasi-update-order-status-${stage}`,
             runtime: lambda.Runtime.NODEJS_20_X,
             entry: path.join(lambdaSrcRoot, 'updateOrderStatus', 'index.js'),
+            projectRoot: lambdaProjectRoot,
             handler: 'handler',
             timeout: Duration.seconds(10),
             environment: {
@@ -138,6 +151,105 @@ export class KasiStack extends Stack {
             },
         });
         table.grantReadWriteData(updateOrderStatusFn);
+
+        // ─────────────────────────────────────────────────────────────
+        // Payments — PayFast + Ozow
+        // ─────────────────────────────────────────────────────────────
+        //
+        // Seeded with PayFast's publicly-documented sandbox merchant so the
+        // full pay -> webhook -> order-paid loop is testable immediately.
+        // Ozow has no universal public sandbox, so its fields start blank —
+        // fill them in via the Secrets Manager console once you have a
+        // (free) Ozow test/live merchant account.
+        const paymentsSecret = new secretsmanager.Secret(this, 'PaymentsSecret', {
+            secretName: `kasi-payments-${stage}`,
+            description: 'PayFast + Ozow merchant credentials',
+            removalPolicy:
+                stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
+            secretObjectValue: {
+                payfastMode: SecretValue.unsafePlainText('sandbox'),
+                payfastMerchantId: SecretValue.unsafePlainText('10000100'),
+                payfastMerchantKey: SecretValue.unsafePlainText('46f0cd694581a'),
+                payfastPassphrase: SecretValue.unsafePlainText(''),
+                ozowMode: SecretValue.unsafePlainText('staging'),
+                ozowSiteCode: SecretValue.unsafePlainText(''),
+                ozowPrivateKey: SecretValue.unsafePlainText(''),
+                ozowApiKey: SecretValue.unsafePlainText(''),
+            },
+        });
+
+        const payfastWebhookFn = new NodejsFunction(this, 'PayfastWebhookFn', {
+            functionName: `kasi-payfast-webhook-${stage}`,
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(lambdaSrcRoot, 'payfastWebhook', 'index.js'),
+            projectRoot: lambdaProjectRoot,
+            handler: 'handler',
+            timeout: Duration.seconds(15),
+            environment: {
+                TABLE_NAME: table.tableName,
+                PAYMENTS_SECRET_ARN: paymentsSecret.secretArn,
+            },
+            bundling: { target: 'node20', externalModules: ['@aws-sdk/*'] },
+        });
+        table.grantReadWriteData(payfastWebhookFn);
+        paymentsSecret.grantRead(payfastWebhookFn);
+
+        const ozowWebhookFn = new NodejsFunction(this, 'OzowWebhookFn', {
+            functionName: `kasi-ozow-webhook-${stage}`,
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(lambdaSrcRoot, 'ozowWebhook', 'index.js'),
+            projectRoot: lambdaProjectRoot,
+            handler: 'handler',
+            timeout: Duration.seconds(15),
+            environment: {
+                TABLE_NAME: table.tableName,
+                PAYMENTS_SECRET_ARN: paymentsSecret.secretArn,
+            },
+            bundling: { target: 'node20', externalModules: ['@aws-sdk/*'] },
+        });
+        table.grantReadWriteData(ozowWebhookFn);
+        paymentsSecret.grantRead(ozowWebhookFn);
+
+        // Public HTTP API for gateway server-to-server webhooks (PayFast ITN,
+        // Ozow notify). These are called by the gateways directly, never by
+        // browser JS, so no CORS configuration is needed.
+        const webhookApi = new apigwv2.HttpApi(this, 'PaymentWebhookApi', {
+            apiName: `kasi-payment-webhooks-${stage}`,
+        });
+        webhookApi.addRoutes({
+            path: '/webhooks/payfast/itn',
+            methods: [apigwv2.HttpMethod.POST],
+            integration: new apigwv2Integrations.HttpLambdaIntegration(
+                'PayfastItnIntegration',
+                payfastWebhookFn
+            ),
+        });
+        webhookApi.addRoutes({
+            path: '/webhooks/ozow/notify',
+            methods: [apigwv2.HttpMethod.POST],
+            integration: new apigwv2Integrations.HttpLambdaIntegration(
+                'OzowNotifyIntegration',
+                ozowWebhookFn
+            ),
+        });
+
+        const initiatePaymentFn = new NodejsFunction(this, 'InitiatePaymentFn', {
+            functionName: `kasi-initiate-payment-${stage}`,
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(lambdaSrcRoot, 'initiatePayment', 'index.js'),
+            projectRoot: lambdaProjectRoot,
+            handler: 'handler',
+            timeout: Duration.seconds(15),
+            environment: {
+                TABLE_NAME: table.tableName,
+                PAYMENTS_SECRET_ARN: paymentsSecret.secretArn,
+                FRONTEND_URL: frontendUrl,
+                WEBHOOK_BASE_URL: webhookApi.apiEndpoint,
+            },
+            bundling: { target: 'node20', externalModules: ['@aws-sdk/*'] },
+        });
+        table.grantReadWriteData(initiatePaymentFn);
+        paymentsSecret.grantRead(initiatePaymentFn);
 
         // ─────────────────────────────────────────────────────────────
         // Cognito
@@ -247,6 +359,10 @@ export class KasiStack extends Stack {
             'UpdateOrderStatusSource',
             updateOrderStatusFn
         );
+        const initiatePaymentSource = api.addLambdaDataSource(
+            'InitiatePaymentSource',
+            initiatePaymentFn
+        );
         const noneSource = api.addNoneDataSource('NoneSource');
 
         // Helper: attach a JS resolver from an existing file in /infra/appsync/resolvers
@@ -306,6 +422,12 @@ export class KasiStack extends Stack {
             ddbSource
         );
         jsResolver('Query', 'getUser', 'Query.getUser.js', ddbSource);
+        jsResolver(
+            'Query',
+            'getVendorBankDetails',
+            'Query.getVendorBankDetails.js',
+            ddbSource
+        );
 
         jsResolver(
             'Mutation',
@@ -361,6 +483,13 @@ export class KasiStack extends Stack {
             dataSource: updateOrderStatusSource,
         });
 
+        new appsync.Resolver(this, 'Res-Mutation-initiatePayment', {
+            api,
+            typeName: 'Mutation',
+            fieldName: 'initiatePayment',
+            dataSource: initiatePaymentSource,
+        });
+
         // ─────────────────────────────────────────────────────────────
         // Outputs — copy these into frontend/.env.local
         // ─────────────────────────────────────────────────────────────
@@ -373,6 +502,8 @@ export class KasiStack extends Stack {
         new CfnOutput(this, 'AppSyncEndpoint', { value: api.graphqlUrl });
         new CfnOutput(this, 'AppSyncApiKey', { value: api.apiKey ?? '' });
         new CfnOutput(this, 'AppSyncApiId', { value: api.apiId });
+        new CfnOutput(this, 'WebhookApiUrl', { value: webhookApi.apiEndpoint });
+        new CfnOutput(this, 'PaymentsSecretArn', { value: paymentsSecret.secretArn });
 
     }
 }

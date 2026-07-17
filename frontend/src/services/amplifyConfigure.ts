@@ -21,6 +21,7 @@ export function configureAmplify(): boolean {
   const userPoolId = import.meta.env.VITE_COGNITO_USER_POOL_ID;
   const userPoolClientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
   const endpoint = import.meta.env.VITE_APPSYNC_ENDPOINT;
+  const apiKey = import.meta.env.VITE_APPSYNC_API_KEY;
 
   if (isPlaceholder(userPoolId) || isPlaceholder(userPoolClientId)) {
     console.info(
@@ -43,7 +44,11 @@ export function configureAmplify(): boolean {
       GraphQL: {
         endpoint: endpoint || '',
         region,
-        defaultAuthMode: 'userPool' as const,
+        apiKey: apiKey || undefined,
+        // Most traffic is unauthenticated guest browsing/ordering, so API key
+        // is the default. Vendor/admin-only operations explicitly override
+        // to authMode: 'userPool' per call in services/api.ts.
+        defaultAuthMode: 'apiKey' as const,
       },
     },
   });

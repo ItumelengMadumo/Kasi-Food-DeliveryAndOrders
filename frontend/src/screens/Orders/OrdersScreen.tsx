@@ -73,7 +73,7 @@ export function OrdersScreen() {
           icon={<Package size={48} />}
           title="No orders yet"
           description="Start by browsing vendors and placing your first order!"
-          action={<Button onClick={() => navigate('/')}>Browse Food</Button>}
+          action={<Button onClick={() => navigate('/vendors')}>Browse Food</Button>}
         />
       ) : (
         <div className="space-y-3">

@@ -32,6 +32,13 @@ enum DeliveryMethod {
   DELIVERY
 }
 
+# Who fulfils delivery for an order/vendor today. THIRD_PARTY is a data-model
+# seam for a future courier-partner integration — no live integration exists yet.
+enum DeliveryProvider {
+  SELF_MANAGED
+  THIRD_PARTY
+}
+
 enum OrderStatus {
   PENDING
   ACCEPTED
@@ -47,6 +54,12 @@ enum PaymentMethod {
   CASH_ON_DELIVERY
   CASH_ON_PICKUP
   EFT
+  PAYMENT_LINK
+}
+
+enum PaymentProvider {
+  PAYFAST
+  OZOW
 }
 
 enum PaymentProofStatus {
@@ -110,6 +123,7 @@ type Vendor {
   status: VendorStatus!
   deliveryType: DeliveryType
   deliveryValue: Float
+  deliveryProvider: DeliveryProvider
   hasBankAccount: Boolean!
   whatsappNumber: String
   refPrefix: String
@@ -152,10 +166,16 @@ type Order {
   status: OrderStatus!
   deliveryMethod: DeliveryMethod!
   deliveryFee: Float
+  deliveryProvider: DeliveryProvider
+  courierName: String
+  courierTrackingUrl: String
+  courierExternalId: String
   subtotal: Float!
   totalAmount: Float!
   paymentMethod: PaymentMethod!
   paymentStatus: String
+  paymentProvider: PaymentProvider
+  paymentGatewayRef: String
   contactPhone: String!
   specialInstructions: String
   items: [OrderItem!]
@@ -230,6 +250,12 @@ type InventoryItem {
   status: InventoryStatus!
   createdAt: AWSDateTime!
   updatedAt: AWSDateTime!
+}
+
+type PaymentInitiation {
+  provider: PaymentProvider!
+  redirectUrl: String!
+  paymentRef: String!
 }
 
 # ── Input Types ────────────────────────────────────
@@ -364,19 +390,32 @@ input UpsertInventoryItemInput {
   status: InventoryStatus
 }
 
+input BankDetailsInput {
+  bankName: String!
+  accountNumber: String!
+  accountHolder: String!
+  branchCode: String!
+}
+
 # ── Queries ────────────────────────────────────────
 
 type Query {
-  # Vendor queries
+  # Vendor queries — public browsing stays on the default (API key) auth
   getNearbyVendors(location: LocationInput!, radiusKm: Float): [Vendor!]!
   getVendor(vendorId: ID!): Vendor
+  # Public: customer-facing vendor directory calls this with status=APPROVED
   getAllVendors(status: VendorStatus): [Vendor!]!
   getVendorMenu(vendorId: ID!): [MenuItem!]!
   getVendorByWhatsApp(whatsappNumber: String!): Vendor
 
+  # Bank details are sensitive — owner vendor or admin only, never the public API key
+  getVendorBankDetails(vendorId: ID!): BankDetails
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
+
   # Order queries
   getOrder(orderId: ID!): Order
   getVendorOrders(vendorId: ID!, status: OrderStatus): [Order!]!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
   getCustomerOrders(customerId: ID!): [Order!]!
 
   # User queries
@@ -385,19 +424,24 @@ type Query {
 
   # Admin queries
   getPendingVendorApplications: [VendorApplication!]!
+    @aws_cognito_user_pools(cognito_groups: ["ADMIN", "SUPER_ADMIN"])
   getAllOrders(status: OrderStatus, limit: Int): [Order!]!
+    @aws_cognito_user_pools(cognito_groups: ["ADMIN", "SUPER_ADMIN"])
 
   # Review queries
   getVendorReviews(vendorId: ID!): [Review!]!
 
   # WhatsApp / payment proof queries
   getOrderPaymentProofs(orderId: ID!): [PaymentProof!]!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
 
   # Revenue queries
   getVendorRevenue(vendorId: ID!, fromDate: AWSDateTime, toDate: AWSDateTime): [RevenueEntry!]!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
 
   # Inventory queries
   getVendorInventory(vendorId: ID!, status: InventoryStatus): [InventoryItem!]!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
 }
 
 # ── Mutations ──────────────────────────────────────
@@ -410,23 +454,36 @@ type Mutation {
   # Vendor lifecycle
   createVendorApplication(input: CreateVendorApplicationInput!): VendorApplication!
   approveVendor(applicationId: ID!): Vendor!
+    @aws_cognito_user_pools(cognito_groups: ["ADMIN", "SUPER_ADMIN"])
   rejectVendor(applicationId: ID!, reason: String): VendorApplication!
+    @aws_cognito_user_pools(cognito_groups: ["ADMIN", "SUPER_ADMIN"])
 
-  # Vendor management
+  # Vendor management — owner vendor (enforced in-resolver) or admin only
   updateVendorProfile(input: UpdateVendorProfileInput!): Vendor!
-  updateVendorBankDetails(vendorId: ID!, bankDetails: AWSJSON!): Vendor!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
+  updateVendorBankDetails(vendorId: ID!, bankDetails: BankDetailsInput!): Vendor!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
 
-  # Menu management
+  # Menu management — owner vendor (enforced in-resolver) or admin only
   createMenuItem(input: CreateMenuItemInput!): MenuItem!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
   updateMenuItem(input: UpdateMenuItemInput!): MenuItem!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
   deleteMenuItem(menuItemId: ID!, vendorId: ID!): Boolean!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
   toggleMenuItemAvailability(menuItemId: ID!, vendorId: ID!, available: Boolean!): MenuItem!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
 
-  # Orders
+  # Orders — createOrder/cancelOrder stay public so guests can order/cancel
   createOrder(input: CreateOrderInput!): Order!
   updateOrderStatus(input: UpdateOrderStatusInput!): Order!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
   cancelOrder(orderId: ID!, reason: String): Order!
   markOrderPaid(orderId: ID!): Order!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
+
+  # Payments — public so guest checkouts can pay; gateway credentials never touch the client
+  initiatePayment(orderId: ID!, provider: PaymentProvider!): PaymentInitiation!
 
   # Reviews
   createReview(input: CreateReviewInput!): Review!
@@ -436,9 +493,11 @@ type Mutation {
 
   # Revenue tracking
   recordRevenue(input: RecordRevenueInput!): RevenueEntry!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
 
   # Inventory management
   upsertInventoryItem(input: UpsertInventoryItemInput!): InventoryItem!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
 }
 
 # ── Subscriptions ──────────────────────────────────

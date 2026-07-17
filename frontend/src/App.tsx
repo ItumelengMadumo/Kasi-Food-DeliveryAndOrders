@@ -15,6 +15,11 @@ const VendorDetailsScreen = lazy(() =>
     default: module.VendorDetailsScreen,
   }))
 );
+const VendorDirectoryScreen = lazy(() =>
+  import('./screens/Vendors/VendorDirectoryScreen').then((module) => ({
+    default: module.VendorDirectoryScreen,
+  }))
+);
 const CartScreen = lazy(() =>
   import('./screens/Cart/CartScreen').then((module) => ({ default: module.CartScreen }))
 );
@@ -93,6 +98,7 @@ function App() {
           <Routes>
             {/* Customer routes */}
             <Route path="/" element={<HomeRoute />} />
+            <Route path="/vendors" element={<VendorDirectoryScreen />} />
             <Route path="/vendor/:vendorId" element={<VendorDetailsScreen />} />
             <Route path="/cart" element={<CartScreen />} />
             <Route path="/checkout" element={<CheckoutScreen />} />

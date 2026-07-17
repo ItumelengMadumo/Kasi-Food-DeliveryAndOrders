@@ -38,19 +38,19 @@ export function HomeScreen() {
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link to="/auth?mode=register&role=vendor">
+              <Link to="/vendors">
                 <Button size="lg" className="w-full rounded-full px-7 sm:w-auto">
-                  Register as a Vendor
+                  Order Food Now
                   <ArrowRight size={18} className="ml-2" />
                 </Button>
               </Link>
-              <Link to="/auth?mode=login&role=vendor">
+              <Link to="/auth?mode=register&role=vendor">
                 <Button
                   variant="ghost"
                   size="lg"
                   className="w-full rounded-full border border-white/20 bg-white/5 px-7 text-white hover:bg-white/10 sm:w-auto"
                 >
-                  Login to Your Shop
+                  Register as a Vendor
                 </Button>
               </Link>
             </div>
@@ -258,13 +258,22 @@ export function HomeScreen() {
           </div>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link to="/auth?mode=register&role=vendor">
+            <Link to="/vendors">
               <Button
                 variant="secondary"
                 size="lg"
                 className="w-full rounded-full bg-white px-7 text-kasi-orange hover:bg-orange-50 sm:w-auto"
               >
-                Register
+                Browse Food
+              </Button>
+            </Link>
+            <Link to="/auth?mode=register&role=vendor">
+              <Button
+                variant="ghost"
+                size="lg"
+                className="w-full rounded-full border border-white/40 px-7 text-white hover:bg-white/10 sm:w-auto"
+              >
+                Register as Vendor
               </Button>
             </Link>
             <Link to="/auth?mode=login&role=vendor">

@@ -5,3 +5,5 @@ cdk.out
 *.d.ts
 .env
 .cdk.staging
+cdk-outputs.json
+deploy.log

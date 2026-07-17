@@ -10,6 +10,12 @@ export type DeliveryType = 'PERCENTAGE' | 'FLAT';
 
 export type DeliveryMethod = 'PICKUP' | 'DELIVERY';
 
+// Who fulfils delivery today. THIRD_PARTY is a data-model seam for a future
+// courier-partner integration — no live integration exists yet.
+export type DeliveryProvider = 'SELF_MANAGED' | 'THIRD_PARTY';
+
+export type PaymentProvider = 'PAYFAST' | 'OZOW';
+
 export type OrderStatus =
   | 'PENDING'
   | 'ACCEPTED'
@@ -119,10 +125,14 @@ export interface Order {
   status: OrderStatus;
   deliveryMethod: DeliveryMethod;
   deliveryFee?: number;
+  deliveryProvider?: DeliveryProvider;
+  courierName?: string;
+  courierTrackingUrl?: string;
   subtotal: number;
   totalAmount: number;
   paymentMethod: PaymentMethod;
   paymentStatus?: string;
+  paymentProvider?: PaymentProvider;
   contactPhone: string;
   specialInstructions?: string;
   source?: OrderSource;
