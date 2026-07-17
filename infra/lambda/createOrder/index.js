@@ -160,6 +160,7 @@ exports.handler = async (event) => {
     contactPhone,
     specialInstructions: specialInstructions || null,
     hasBankAccount: vendor.hasBankAccount,
+    source: 'WEB',
     createdAt: now,
     updatedAt: now,
   };
@@ -243,6 +244,7 @@ exports.handler = async (event) => {
     paymentMethod,
     contactPhone,
     specialInstructions: specialInstructions || null,
+    source: 'WEB',
     createdAt: now,
     updatedAt: now,
   };

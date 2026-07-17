@@ -1,20 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Clock, Phone, ShoppingCart, Plus, Minus } from 'lucide-react';
+import { ArrowLeft, MapPin, Phone, MessageCircle, ShoppingCart, Plus, Minus } from 'lucide-react';
 import { getVendor, getVendorMenu } from '../../services/api';
 import { useCartStore } from '../../state/cartStore';
 import { LoadingSpinner } from '../../components/ui/Card';
 import { StarRating } from '../../components/ui/StatusBadge';
-import { Button } from '../../components/ui/Button';
+import { telHref, whatsappHref } from '../../domain/contact';
 import type { Vendor, MenuItem } from '../../types';
-
-// Demo data for offline mode
-const DEMO_MENU: MenuItem[] = [
-  { id: 'm1', vendorId: 'demo-1', name: 'Pap & Wors', description: 'Traditional maize pap with boerewors', price: 45, available: true, createdAt: new Date().toISOString() },
-  { id: 'm2', vendorId: 'demo-1', name: 'Chicken Feet', description: 'Spicy grilled walkie-talkies', price: 30, available: true, createdAt: new Date().toISOString() },
-  { id: 'm3', vendorId: 'demo-1', name: 'Braai Pack', description: 'Chops, wors, and pap for 2', price: 120, available: true, createdAt: new Date().toISOString() },
-  { id: 'm4', vendorId: 'demo-1', name: 'Samp & Beans', description: 'Slow-cooked samp with sugar beans', price: 35, available: false, createdAt: new Date().toISOString() },
-];
 
 export function VendorDetailsScreen() {
   const { vendorId } = useParams<{ vendorId: string }>();
@@ -22,6 +14,7 @@ export function VendorDetailsScreen() {
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const { items, addItem, removeItem, updateQuantity, vendorId: cartVendorId, subtotal } = useCartStore();
 
   useEffect(() => {
@@ -30,27 +23,14 @@ export function VendorDetailsScreen() {
 
   async function loadVendorData(id: string) {
     setLoading(true);
+    setError('');
     try {
       const [v, m] = await Promise.all([getVendor(id), getVendorMenu(id)]);
       setVendor(v);
       setMenu(m);
-    } catch {
-      // Demo fallback
-      setVendor({
-        id: id,
-        ownerId: 'demo',
-        name: "Mama Thandi's Kitchen",
-        address: 'Soweto, Johannesburg',
-        status: 'APPROVED',
-        hasBankAccount: false,
-        description: 'Authentic home-cooked meals.',
-        deliveryType: 'FLAT',
-        deliveryValue: 15,
-        rating: 4.8,
-        totalReviews: 124,
-        createdAt: new Date().toISOString(),
-      });
-      setMenu(DEMO_MENU.map((item) => ({ ...item, vendorId: id })));
+    } catch (err) {
+      console.error('Failed to load vendor:', err);
+      setError('Could not load this vendor right now. Please try again in a moment.');
     } finally {
       setLoading(false);
     }
@@ -64,6 +44,7 @@ export function VendorDetailsScreen() {
   const cartCount = cartItems.reduce((s, i) => s + i.quantity, 0);
 
   if (loading) return <LoadingSpinner className="min-h-screen" />;
+  if (error) return <div className="p-8 text-center text-red-600">{error}</div>;
   if (!vendor) return <div className="p-8 text-center text-stone-500">Vendor not found.</div>;
 
   const categories = [...new Set(menu.map((m) => m.category || 'Menu'))];
@@ -107,6 +88,36 @@ export function VendorDetailsScreen() {
             </span>
           )}
         </div>
+
+        {/* Direct contact — hands off to the customer's own phone/WhatsApp,
+            using the vendor's stored number. No backend involved. */}
+        {(vendor.contactDetails || vendor.whatsappNumber) && (
+          <div className="mt-3 flex gap-2">
+            {vendor.contactDetails && (
+              <a
+                href={telHref(vendor.contactDetails)}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-stone-200 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50"
+              >
+                <Phone size={16} />
+                Call
+              </a>
+            )}
+            {vendor.whatsappNumber && (
+              <a
+                href={whatsappHref(
+                  vendor.whatsappNumber,
+                  `Hi ${vendor.name}, I'd like to place an order.`
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-700"
+              >
+                <MessageCircle size={16} />
+                WhatsApp
+              </a>
+            )}
+          </div>
+        )}
 
         <div className="mt-3 flex gap-2 flex-wrap text-xs">
           {vendor.deliveryType && vendor.deliveryValue != null && (

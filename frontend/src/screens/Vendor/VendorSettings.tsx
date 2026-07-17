@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Save, Smartphone } from 'lucide-react';
 import { useAuthStore } from '../../state/authStore';
 import {
@@ -16,7 +16,14 @@ import type { Vendor } from '../../types';
 export function VendorSettings() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const vendorId = user?.id;
+  const [searchParams] = useSearchParams();
+  const overrideVendorId = searchParams.get('vendorId');
+  // Admins can manage any vendor's settings by linking with ?vendorId=... —
+  // vendors onboarded by the operator have no Cognito login of their own.
+  const vendorId = (user?.role === 'ADMIN' && overrideVendorId) || user?.id;
+  const backHref = overrideVendorId
+    ? `/vendor/dashboard?vendorId=${overrideVendorId}`
+    : '/vendor/dashboard';
 
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,6 +39,10 @@ export function VendorSettings() {
 
   // WhatsApp contact number (used by clients to reach the business)
   const [whatsappNumber, setWhatsappNumber] = useState('');
+
+  // Digital payments (PayFast/Ozow) — off by default; most vendors collect
+  // cash/EFT on pickup or delivery for now.
+  const [digitalPaymentsEnabled, setDigitalPaymentsEnabled] = useState(false);
 
   // Banking details
   const [bankName, setBankName] = useState('');
@@ -56,6 +67,7 @@ export function VendorSettings() {
           setContactDetails(v.contactDetails || '');
           setWhatsappNumber(v.whatsappNumber || '');
           setDescription(v.description || '');
+          setDigitalPaymentsEnabled(v.digitalPaymentsEnabled === true);
         }
         setBankName(bank?.bankName || '');
         setAccountNumber(bank?.accountNumber || '');
@@ -97,6 +109,7 @@ export function VendorSettings() {
         contactDetails: contactDetails.trim() || undefined,
         whatsappNumber: whatsappNumber.trim().replace(/\s/g, '') || undefined,
         description: description.trim() || undefined,
+        digitalPaymentsEnabled,
       });
 
       const bankPayload = {
@@ -131,7 +144,7 @@ export function VendorSettings() {
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button
-          onClick={() => navigate('/vendor/dashboard')}
+          onClick={() => navigate(backHref)}
           className="p-2 text-stone-500 hover:text-stone-800 -ml-2"
         >
           <ArrowLeft size={20} />
@@ -221,6 +234,29 @@ export function VendorSettings() {
             type="tel"
             hint="Include country code, e.g. +27721234567"
           />
+        </section>
+
+        {/* Digital payments opt-in */}
+        <section className="bg-white rounded-xl border border-stone-100 p-4 space-y-3">
+          <h2 className="font-semibold text-stone-800 text-sm uppercase tracking-wide">
+            Online Payment
+          </h2>
+          <p className="text-xs text-stone-500">
+            Off by default — customers pay cash or EFT on pickup/delivery. Turn this on once
+            you're ready to accept card payments online via PayFast or Ozow.
+          </p>
+          <button
+            type="button"
+            onClick={() => setDigitalPaymentsEnabled((v) => !v)}
+            className={`w-full flex items-center justify-between rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-colors ${
+              digitalPaymentsEnabled
+                ? 'border-kasi-orange bg-orange-50 text-kasi-orange'
+                : 'border-stone-200 text-stone-600'
+            }`}
+          >
+            <span>Accept online card payments</span>
+            <span>{digitalPaymentsEnabled ? 'On' : 'Off'}</span>
+          </button>
         </section>
 
         {/* Banking Details */}

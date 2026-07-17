@@ -24,6 +24,7 @@ export function request(ctx) {
       description: input.description || null,
       hasBankAccount: input.hasBankAccount === true,
       whatsappNumber: input.whatsappNumber || null,
+      location: input.location || null,
       status: 'PENDING',
       createdAt: now,
     }),

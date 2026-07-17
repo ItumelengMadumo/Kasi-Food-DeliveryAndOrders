@@ -34,6 +34,7 @@ export function response(ctx) {
       deliveryType: item.deliveryType,
       deliveryValue: item.deliveryValue,
       hasBankAccount: item.hasBankAccount === true,
+      digitalPaymentsEnabled: item.digitalPaymentsEnabled === true,
       whatsappNumber: item.whatsappNumber,
       refPrefix: item.refPrefix,
       imageUrl: item.imageUrl,

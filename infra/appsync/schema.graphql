@@ -73,6 +73,12 @@ enum InventoryStatus {
   INACTIVE
 }
 
+enum OrderSource {
+  WEB
+  WHATSAPP
+  MANUAL
+}
+
 # ── Types ─────────────────────────────────────────
 
 type User {
@@ -125,6 +131,9 @@ type Vendor {
   deliveryValue: Float
   deliveryProvider: DeliveryProvider
   hasBankAccount: Boolean!
+  # Digital payment (PayFast/Ozow) only shows up at checkout when a vendor has
+  # explicitly opted in — most vendors onboarded today are cash/EFT-on-collection.
+  digitalPaymentsEnabled: Boolean
   whatsappNumber: String
   refPrefix: String
   imageUrl: String
@@ -178,6 +187,7 @@ type Order {
   paymentGatewayRef: String
   contactPhone: String!
   specialInstructions: String
+  source: OrderSource
   items: [OrderItem!]
   createdAt: AWSDateTime!
   updatedAt: AWSDateTime!
@@ -281,17 +291,20 @@ input CreateVendorApplicationInput {
   description: String
   hasBankAccount: Boolean!
   whatsappNumber: String
+  location: LocationInput
 }
 
 input UpdateVendorProfileInput {
   vendorId: ID!
   name: String
   address: String
+  location: LocationInput
   contactDetails: String
   workingHours: AWSJSON
   deliveryType: DeliveryType
   deliveryValue: Float
   hasBankAccount: Boolean
+  digitalPaymentsEnabled: Boolean
   whatsappNumber: String
   description: String
   imageUrl: String

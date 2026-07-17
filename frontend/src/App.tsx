@@ -62,6 +62,11 @@ const VendorWhatsAppScreen = lazy(() =>
 const AdminDashboard = lazy(() =>
   import('./screens/Admin/AdminDashboard').then((module) => ({ default: module.AdminDashboard }))
 );
+const AdminAddVendorScreen = lazy(() =>
+  import('./screens/Admin/AdminAddVendorScreen').then((module) => ({
+    default: module.AdminAddVendorScreen,
+  }))
+);
 
 function App() {
   const { setUser, logout, user } = useAuthStore();
@@ -157,6 +162,14 @@ function App() {
               element={
                 <ProtectedRoute roles={['ADMIN']}>
                   <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/vendors/new"
+              element={
+                <ProtectedRoute roles={['ADMIN']}>
+                  <AdminAddVendorScreen />
                 </ProtectedRoute>
               }
             />

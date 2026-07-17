@@ -152,6 +152,23 @@ export class KasiStack extends Stack {
         });
         table.grantReadWriteData(updateOrderStatusFn);
 
+        // Converts a pending VendorApplication into a live, login-free Vendor
+        // record (vendorId is a fresh UUID, independent of any Cognito user) —
+        // the core of the operator-driven onboarding flow.
+        const approveVendorFn = new NodejsFunction(this, 'ApproveVendorFn', {
+            functionName: `kasi-approve-vendor-${stage}`,
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(lambdaSrcRoot, 'approveVendor', 'index.js'),
+            projectRoot: lambdaProjectRoot,
+            handler: 'handler',
+            timeout: Duration.seconds(10),
+            environment: {
+                TABLE_NAME: table.tableName,
+            },
+            bundling: { target: 'node20', externalModules: ['@aws-sdk/*'] },
+        });
+        table.grantReadWriteData(approveVendorFn);
+
         // ─────────────────────────────────────────────────────────────
         // Payments — PayFast + Ozow
         // ─────────────────────────────────────────────────────────────
@@ -250,6 +267,75 @@ export class KasiStack extends Stack {
         });
         table.grantReadWriteData(initiatePaymentFn);
         paymentsSecret.grantRead(initiatePaymentFn);
+
+        // ─────────────────────────────────────────────────────────────
+        // WhatsApp ordering channel (Twilio)
+        // ─────────────────────────────────────────────────────────────
+        //
+        // Seeded blank — fill in via Secrets Manager (accountSid, authToken,
+        // whatsappFrom in E.164 format) once real Twilio credentials are on
+        // hand. A leaked Twilio auth token is a direct cost/abuse vector, so
+        // this mirrors the payments-secret pattern rather than plain env vars.
+        const whatsappSecret = new secretsmanager.Secret(this, 'WhatsAppSecret', {
+            secretName: `kasi-whatsapp-${stage}`,
+            description: 'Twilio WhatsApp credentials',
+            removalPolicy:
+                stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
+            secretObjectValue: {
+                accountSid: SecretValue.unsafePlainText(''),
+                authToken: SecretValue.unsafePlainText(''),
+                whatsappFrom: SecretValue.unsafePlainText(''),
+            },
+        });
+
+        const sendWhatsAppNotificationFn = new NodejsFunction(this, 'SendWhatsAppNotificationFn', {
+            functionName: `kasi-send-whatsapp-notification-${stage}`,
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(lambdaSrcRoot, 'sendWhatsAppNotification', 'index.js'),
+            projectRoot: lambdaProjectRoot,
+            handler: 'handler',
+            timeout: Duration.seconds(15),
+            environment: {
+                TABLE_NAME: table.tableName,
+                WHATSAPP_SECRET_ARN: whatsappSecret.secretArn,
+            },
+            bundling: { target: 'node20', externalModules: ['@aws-sdk/*'] },
+        });
+        table.grantReadData(sendWhatsAppNotificationFn);
+        whatsappSecret.grantRead(sendWhatsAppNotificationFn);
+
+        // Notify the vendor by WhatsApp for web-originated orders too, not
+        // just the ones created inside the WhatsApp chat flow.
+        createOrderFn.addEnvironment('NOTIFICATION_LAMBDA_ARN', sendWhatsAppNotificationFn.functionArn);
+        sendWhatsAppNotificationFn.grantInvoke(createOrderFn);
+
+        const whatsappWebhookFn = new NodejsFunction(this, 'WhatsAppWebhookFn', {
+            functionName: `kasi-whatsapp-webhook-${stage}`,
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(lambdaSrcRoot, 'whatsappWebhook', 'index.js'),
+            projectRoot: lambdaProjectRoot,
+            handler: 'handler',
+            timeout: Duration.seconds(15),
+            environment: {
+                TABLE_NAME: table.tableName,
+                WHATSAPP_SECRET_ARN: whatsappSecret.secretArn,
+                WEBHOOK_URL: `${webhookApi.apiEndpoint}/webhooks/whatsapp`,
+                NOTIFICATION_LAMBDA_ARN: sendWhatsAppNotificationFn.functionArn,
+            },
+            bundling: { target: 'node20', externalModules: ['@aws-sdk/*'] },
+        });
+        table.grantReadWriteData(whatsappWebhookFn);
+        whatsappSecret.grantRead(whatsappWebhookFn);
+        sendWhatsAppNotificationFn.grantInvoke(whatsappWebhookFn);
+
+        webhookApi.addRoutes({
+            path: '/webhooks/whatsapp',
+            methods: [apigwv2.HttpMethod.POST],
+            integration: new apigwv2Integrations.HttpLambdaIntegration(
+                'WhatsAppWebhookIntegration',
+                whatsappWebhookFn
+            ),
+        });
 
         // ─────────────────────────────────────────────────────────────
         // Cognito
@@ -363,6 +449,10 @@ export class KasiStack extends Stack {
             'InitiatePaymentSource',
             initiatePaymentFn
         );
+        const approveVendorSource = api.addLambdaDataSource(
+            'ApproveVendorSource',
+            approveVendorFn
+        );
         const noneSource = api.addNoneDataSource('NoneSource');
 
         // Helper: attach a JS resolver from an existing file in /infra/appsync/resolvers
@@ -403,7 +493,6 @@ export class KasiStack extends Stack {
             ddbSource
         );
         jsResolver('Mutation', 'markOrderPaid', 'Mutation.markOrderPaid.js', ddbSource);
-        jsResolver('Mutation', 'approveVendor', 'Mutation.approveVendor.js', ddbSource);
 
         // ── Direct DDB resolvers (new files added for soft-launch) ───
         jsResolver('Query', 'getOrder', 'Query.getOrder.js', ddbSource);
@@ -490,6 +579,13 @@ export class KasiStack extends Stack {
             dataSource: initiatePaymentSource,
         });
 
+        new appsync.Resolver(this, 'Res-Mutation-approveVendor', {
+            api,
+            typeName: 'Mutation',
+            fieldName: 'approveVendor',
+            dataSource: approveVendorSource,
+        });
+
         // ─────────────────────────────────────────────────────────────
         // Outputs — copy these into frontend/.env.local
         // ─────────────────────────────────────────────────────────────
@@ -504,6 +600,7 @@ export class KasiStack extends Stack {
         new CfnOutput(this, 'AppSyncApiId', { value: api.apiId });
         new CfnOutput(this, 'WebhookApiUrl', { value: webhookApi.apiEndpoint });
         new CfnOutput(this, 'PaymentsSecretArn', { value: paymentsSecret.secretArn });
+        new CfnOutput(this, 'WhatsAppSecretArn', { value: whatsappSecret.secretArn });
 
     }
 }

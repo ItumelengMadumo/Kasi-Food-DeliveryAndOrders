@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Save } from 'lucide-react';
 import { useAuthStore } from '../../state/authStore';
 import { createMenuItem, getVendorMenu, updateMenuItem } from '../../services/api';
@@ -14,7 +14,15 @@ export function VendorMenuEditorScreen() {
   const navigate = useNavigate();
   const { menuItemId } = useParams<{ menuItemId: string }>();
   const { user } = useAuthStore();
-  const vendorId = user?.id || DEMO_VENDOR_ID;
+  const [searchParams] = useSearchParams();
+  const overrideVendorId = searchParams.get('vendorId');
+  // Admins can edit any vendor's menu by linking with ?vendorId=... — vendors
+  // onboarded by the operator have no Cognito login of their own.
+  const vendorId =
+    (user?.role === 'ADMIN' && overrideVendorId) || user?.id || DEMO_VENDOR_ID;
+  const backHref = overrideVendorId
+    ? `/vendor/dashboard?vendorId=${overrideVendorId}`
+    : '/vendor/dashboard';
   const isEditMode = Boolean(menuItemId);
 
   const [loading, setLoading] = useState(isEditMode);
@@ -44,18 +52,9 @@ export function VendorMenuEditorScreen() {
         }
 
         hydrateForm(item);
-      } catch {
-        hydrateForm({
-          id: menuItemId || 'demo-item',
-          vendorId,
-          name: 'Pap & Wors',
-          description: 'Traditional maize pap with boerewors.',
-          price: 45,
-          imageUrl: '',
-          available: true,
-          category: 'Meals',
-          createdAt: new Date().toISOString(),
-        });
+      } catch (err) {
+        console.error('Failed to load menu item:', err);
+        setError('Could not load this menu item. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -115,9 +114,12 @@ export function VendorMenuEditorScreen() {
         await createMenuItem(payload);
       }
 
-      navigate('/vendor/dashboard');
-    } catch {
-      navigate('/vendor/dashboard');
+      navigate(backHref);
+    } catch (err) {
+      console.error('Failed to save menu item:', err);
+      setError(
+        err instanceof Error ? err.message : 'Could not save this item. Please try again.'
+      );
     } finally {
       setSaving(false);
     }
@@ -131,7 +133,7 @@ export function VendorMenuEditorScreen() {
     <div className="max-w-lg mx-auto px-4 py-6 pb-24 md:pb-6">
       <div className="flex items-center gap-3 mb-6">
         <button
-          onClick={() => navigate('/vendor/dashboard')}
+          onClick={() => navigate(backHref)}
           className="p-2 text-stone-500 hover:text-stone-800 -ml-2"
         >
           <ArrowLeft size={20} />

@@ -18,29 +18,25 @@
  *
  * Environment variables:
  *   TABLE_NAME             — DynamoDB table name
- *   TWILIO_ACCOUNT_SID     — Twilio Account SID
- *   TWILIO_AUTH_TOKEN      — Twilio Auth Token
- *   TWILIO_WHATSAPP_FROM   — Twilio WhatsApp sender number (e.g. +14155238886)
+ *   WHATSAPP_SECRET_ARN    — Secrets Manager secret: {accountSid, authToken, whatsappFrom}
  */
 
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
 const https = require('https');
+const { getWhatsAppSecrets } = require('../_shared/secrets');
 
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient);
 
 const TABLE_NAME = process.env.TABLE_NAME || 'KasiMainTable';
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
-const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM || '';
 
 /**
  * Send a WhatsApp message via Twilio REST API.
  * Uses the built-in `https` module to avoid external dependencies.
  */
-function sendTwilioMessage(to, body) {
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM) {
+function sendTwilioMessage(to, body, { accountSid, authToken, whatsappFrom }) {
+  if (!accountSid || !authToken || !whatsappFrom) {
     console.log(
       '[sendWhatsAppNotification] Twilio not configured — skipping send. Would send to',
       to,
@@ -50,9 +46,9 @@ function sendTwilioMessage(to, body) {
     return Promise.resolve({ success: false, reason: 'not_configured' });
   }
 
-  const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+  const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
   const postData = new URLSearchParams({
-    From: `whatsapp:${TWILIO_WHATSAPP_FROM}`,
+    From: `whatsapp:${whatsappFrom}`,
     To: `whatsapp:${to}`,
     Body: body,
   }).toString();
@@ -61,7 +57,7 @@ function sendTwilioMessage(to, body) {
     const req = https.request(
       {
         hostname: 'api.twilio.com',
-        path: `/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
+        path: `/2010-04-01/Accounts/${accountSid}/Messages.json`,
         method: 'POST',
         headers: {
           Authorization: `Basic ${auth}`,
@@ -150,7 +146,8 @@ exports.handler = async (event) => {
     `\n\n*Total: R${total}*` +
     `\n\nOpen your dashboard to process this order. 👇`;
 
-  const result = await sendTwilioMessage(vendorWhatsApp, message);
+  const twilioSecrets = await getWhatsAppSecrets();
+  const result = await sendTwilioMessage(vendorWhatsApp, message, twilioSecrets);
   console.log('[sendWhatsAppNotification] Result:', result);
 
   return result;

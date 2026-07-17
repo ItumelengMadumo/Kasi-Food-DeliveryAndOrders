@@ -1,18 +1,28 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Clock, Users, ShoppingBag, Store } from 'lucide-react';
-import { getPendingVendorApplications, approveVendor, rejectVendor, getAllOrders } from '../../services/api';
+import { useNavigate } from 'react-router-dom';
+import { CheckCircle, XCircle, Clock, Users, ShoppingBag, Store, UserPlus, Settings } from 'lucide-react';
+import {
+  getPendingVendorApplications,
+  approveVendor,
+  rejectVendor,
+  getAllOrders,
+  getAllVendors,
+} from '../../services/api';
 import { LoadingSpinner } from '../../components/ui/Card';
 import { OrderStatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
-import type { VendorApplication, Order } from '../../types';
+import type { VendorApplication, Order, Vendor } from '../../types';
 import { displayOrderNumber } from '../../domain/orderNumber';
 
 export function AdminDashboard() {
-  const [tab, setTab] = useState<'overview' | 'applications' | 'orders'>('overview');
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<'overview' | 'vendors' | 'applications' | 'orders'>('overview');
   const [applications, setApplications] = useState<VendorApplication[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
 
   useEffect(() => {
     loadData();
@@ -21,12 +31,14 @@ export function AdminDashboard() {
   async function loadData() {
     setLoading(true);
     try {
-      const [apps, ords] = await Promise.all([
+      const [apps, ords, vends] = await Promise.all([
         getPendingVendorApplications(),
         getAllOrders(),
+        getAllVendors(),
       ]);
       setApplications(apps);
       setOrders(ords);
+      setVendors(vends);
     } catch {
       // Demo data
       setApplications(DEMO_APPLICATIONS);
@@ -38,14 +50,17 @@ export function AdminDashboard() {
 
   async function handleApprove(appId: string) {
     setProcessingId(appId);
+    setActionError('');
     try {
       await approveVendor(appId);
       setApplications((prev) =>
         prev.map((a) => (a.id === appId ? { ...a, status: 'APPROVED' } : a))
       );
-    } catch {
-      setApplications((prev) =>
-        prev.map((a) => (a.id === appId ? { ...a, status: 'APPROVED' } : a))
+      loadData();
+    } catch (err) {
+      console.error('Failed to approve vendor:', err);
+      setActionError(
+        err instanceof Error ? err.message : 'Could not approve this application.'
       );
     } finally {
       setProcessingId(null);
@@ -54,14 +69,16 @@ export function AdminDashboard() {
 
   async function handleReject(appId: string) {
     setProcessingId(appId);
+    setActionError('');
     try {
       await rejectVendor(appId, 'Does not meet requirements');
       setApplications((prev) =>
         prev.map((a) => (a.id === appId ? { ...a, status: 'REJECTED' } : a))
       );
-    } catch {
-      setApplications((prev) =>
-        prev.map((a) => (a.id === appId ? { ...a, status: 'REJECTED' } : a))
+    } catch (err) {
+      console.error('Failed to reject vendor:', err);
+      setActionError(
+        err instanceof Error ? err.message : 'Could not reject this application.'
       );
     } finally {
       setProcessingId(null);
@@ -82,9 +99,15 @@ export function AdminDashboard() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 pb-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-stone-900">Admin Dashboard</h1>
-        <p className="text-stone-500 text-sm">Platform management</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-stone-900">Admin Dashboard</h1>
+          <p className="text-stone-500 text-sm">Platform management</p>
+        </div>
+        <Button size="sm" onClick={() => navigate('/admin/vendors/new')}>
+          <UserPlus size={14} className="mr-1.5" />
+          Add Vendor
+        </Button>
       </div>
 
       {/* Stats */}
@@ -98,6 +121,7 @@ export function AdminDashboard() {
       {/* Tabs */}
       <div className="flex bg-stone-100 rounded-xl p-1 mb-5">
         <TabButton label="Overview" active={tab === 'overview'} onClick={() => setTab('overview')} />
+        <TabButton label={`Vendors (${vendors.length})`} active={tab === 'vendors'} onClick={() => setTab('vendors')} />
         <TabButton label={`Applications (${pendingApps.length})`} active={tab === 'applications'} onClick={() => setTab('applications')} />
         <TabButton label={`All Orders (${orders.length})`} active={tab === 'orders'} onClick={() => setTab('orders')} />
       </div>
@@ -169,6 +193,52 @@ export function AdminDashboard() {
             </div>
           </section>
         </div>
+      ) : tab === 'vendors' ? (
+        <div className="space-y-3">
+          <section className="bg-white rounded-xl border border-stone-100 p-4">
+            <h3 className="font-semibold text-stone-900">All Vendors</h3>
+            <p className="mt-1 text-sm text-stone-500">
+              Manage any vendor's menu, orders, and settings — including ones onboarded
+              without a login of their own.
+            </p>
+          </section>
+          {vendors.length === 0 ? (
+            <p className="text-center text-stone-400 py-8">No vendors yet.</p>
+          ) : (
+            vendors.map((vendor) => (
+              <div
+                key={vendor.id}
+                className="bg-white rounded-xl border border-stone-100 p-4 flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <div className="font-semibold text-stone-900 truncate">{vendor.name}</div>
+                  <div className="text-xs text-stone-500 mt-0.5 truncate">
+                    {vendor.address}
+                    {vendor.whatsappNumber ? ` • ${vendor.whatsappNumber}` : ''}
+                  </div>
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => navigate(`/vendor/dashboard?vendorId=${vendor.id}`)}
+                  >
+                    <Store size={14} className="mr-1.5" />
+                    Manage
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="border border-stone-300"
+                    onClick={() => navigate(`/vendor/settings?vendorId=${vendor.id}`)}
+                  >
+                    <Settings size={14} />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       ) : tab === 'applications' ? (
         <div className="space-y-4">
           <section className="bg-white rounded-xl border border-stone-100 p-4">
@@ -183,6 +253,10 @@ export function AdminDashboard() {
               <MiniStat label="Total" value={applications.length} />
             </div>
           </section>
+
+          {actionError && (
+            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{actionError}</p>
+          )}
 
           {applications.length === 0 ? (
             <p className="text-center text-stone-400 py-8">No applications yet.</p>

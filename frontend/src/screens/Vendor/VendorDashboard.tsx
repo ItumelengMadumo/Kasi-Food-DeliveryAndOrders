@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   PlusCircle,
   Package,
@@ -80,7 +80,15 @@ const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
 export function VendorDashboard() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const vendorId = user?.id || DEMO_VENDOR_ID;
+  const [searchParams] = useSearchParams();
+  // Admins can manage any vendor's dashboard by linking with ?vendorId=... —
+  // vendors onboarded by the operator have no Cognito login of their own.
+  const overrideVendorId = searchParams.get('vendorId');
+  const vendorId =
+    (user?.role === 'ADMIN' && overrideVendorId) || user?.id || DEMO_VENDOR_ID;
+  const isAdminManaged = user?.role === 'ADMIN' && Boolean(overrideVendorId);
+  const withVendorParam = (path: string) =>
+    isAdminManaged ? `${path}?vendorId=${vendorId}` : path;
 
   const [tab, setTab] = useState<'overview' | 'orders' | 'menu' | 'add'>('overview');
   const [orders, setOrders] = useState<Order[]>([]);
@@ -330,7 +338,7 @@ export function VendorDashboard() {
           <p className="text-stone-500 text-sm">Manage your orders and menu</p>
         </div>
         <button
-          onClick={() => navigate('/vendor/settings')}
+          onClick={() => navigate(withVendorParam('/vendor/settings'))}
           className="p-2 text-stone-500 hover:text-stone-800"
           aria-label="Settings"
         >
@@ -427,14 +435,14 @@ export function VendorDashboard() {
                 summary={`${pendingProofs} EFT payments pending review`}
                 detail="Review payment confirmations, track proof status, and manage WhatsApp order channel details."
                 actionLabel="Open WhatsApp"
-                onClick={() => navigate('/vendor/whatsapp')}
+                onClick={() => navigate(withVendorParam('/vendor/whatsapp'))}
               />
               <ModuleOverviewRow
                 title="Business Settings"
                 summary="Profile, contact, and payout settings"
                 detail="Update your operating info, customer contact number, and account details used in payment flows."
                 actionLabel="Open Settings"
-                onClick={() => navigate('/vendor/settings')}
+                onClick={() => navigate(withVendorParam('/vendor/settings'))}
               />
             </div>
           </section>
@@ -467,7 +475,7 @@ export function VendorDashboard() {
                   <h3 className="font-semibold text-stone-900">Menu and Pricing</h3>
                   <p className="text-sm text-stone-500">Fast access to amend items and pricing</p>
                 </div>
-                <Button size="sm" onClick={() => navigate('/vendor/menu/new')}>
+                <Button size="sm" onClick={() => navigate(withVendorParam('/vendor/menu/new'))}>
                   <PlusCircle size={14} className="mr-1.5" />
                   Add Item
                 </Button>
@@ -480,7 +488,7 @@ export function VendorDashboard() {
                     <CompactMenuRow
                       key={item.id}
                       item={item}
-                      onEdit={() => navigate(`/vendor/menu/${item.id}/edit`)}
+                      onEdit={() => navigate(withVendorParam(`/vendor/menu/${item.id}/edit`))}
                       onDelete={() => handleDeleteMenuItem(item.id, item.name)}
                       deleting={deletingMenuItem === item.id}
                     />
@@ -567,7 +575,7 @@ export function VendorDashboard() {
           </section>
 
           <div className="flex justify-end mb-4">
-            <Button onClick={() => navigate('/vendor/menu/new')} size="sm">
+            <Button onClick={() => navigate(withVendorParam('/vendor/menu/new'))} size="sm">
               <PlusCircle size={16} className="mr-1.5" />
               Add Item
             </Button>
@@ -578,7 +586,7 @@ export function VendorDashboard() {
                 key={item.id}
                 item={item}
                 onToggle={() => handleToggleItem(item.id, item.available)}
-                onEdit={() => navigate(`/vendor/menu/${item.id}/edit`)}
+                onEdit={() => navigate(withVendorParam(`/vendor/menu/${item.id}/edit`))}
                 onDelete={() => handleDeleteMenuItem(item.id, item.name)}
                 deleting={deletingMenuItem === item.id}
               />

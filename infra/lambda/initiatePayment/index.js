@@ -48,8 +48,8 @@ exports.handler = async (event) => {
     new GetCommand({ TableName: TABLE_NAME, Key: { PK: `VENDOR#${order.vendorId}`, SK: 'PROFILE' } })
   );
   const vendor = vendorResult.Item;
-  if (!vendor || !vendor.hasBankAccount) {
-    throw new Error('This vendor does not accept digital payments for this order');
+  if (!vendor || !vendor.digitalPaymentsEnabled) {
+    throw new Error('This vendor does not accept digital payments yet — pay on collection instead');
   }
 
   const secrets = await getPaymentSecrets();

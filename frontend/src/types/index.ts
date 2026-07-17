@@ -82,6 +82,7 @@ export interface Vendor {
   deliveryType?: DeliveryType;
   deliveryValue?: number;
   hasBankAccount: boolean;
+  digitalPaymentsEnabled?: boolean;
   whatsappNumber?: string;
   refPrefix?: string;
   imageUrl?: string;

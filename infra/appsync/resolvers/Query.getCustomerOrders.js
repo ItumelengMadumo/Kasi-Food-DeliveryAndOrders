@@ -36,6 +36,7 @@ export function response(ctx) {
     paymentStatus: item.paymentStatus,
     contactPhone: item.contactPhone,
     specialInstructions: item.specialInstructions,
+    source: item.source || null,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   }));

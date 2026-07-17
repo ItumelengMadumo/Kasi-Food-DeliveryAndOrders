@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * Cached Secrets Manager reader for payment gateway credentials.
- * The secret is JSON-shaped: see infra/cdk/lib/kasi-stack.ts for the fields.
+ * Cached Secrets Manager reader. Each secret is JSON-shaped — see
+ * infra/cdk/lib/kasi-stack.ts for the fields of each one.
  */
 
 const {
@@ -12,21 +12,24 @@ const {
 
 const client = new SecretsManagerClient({});
 
-let cached = null;
-let cachedAt = 0;
+const cache = new Map(); // envVarName -> { value, cachedAt }
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-async function getPaymentSecrets() {
+async function getSecret(envVarName) {
   const now = Date.now();
-  if (cached && now - cachedAt < CACHE_TTL_MS) return cached;
+  const entry = cache.get(envVarName);
+  if (entry && now - entry.cachedAt < CACHE_TTL_MS) return entry.value;
 
-  const secretId = process.env.PAYMENTS_SECRET_ARN;
-  if (!secretId) throw new Error('PAYMENTS_SECRET_ARN is not configured');
+  const secretId = process.env[envVarName];
+  if (!secretId) throw new Error(`${envVarName} is not configured`);
 
   const result = await client.send(new GetSecretValueCommand({ SecretId: secretId }));
-  cached = JSON.parse(result.SecretString || '{}');
-  cachedAt = now;
-  return cached;
+  const value = JSON.parse(result.SecretString || '{}');
+  cache.set(envVarName, { value, cachedAt: now });
+  return value;
 }
 
-module.exports = { getPaymentSecrets };
+const getPaymentSecrets = () => getSecret('PAYMENTS_SECRET_ARN');
+const getWhatsAppSecrets = () => getSecret('WHATSAPP_SECRET_ARN');
+
+module.exports = { getSecret, getPaymentSecrets, getWhatsAppSecrets };

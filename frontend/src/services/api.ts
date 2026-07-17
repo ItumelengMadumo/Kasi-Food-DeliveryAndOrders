@@ -34,7 +34,7 @@ export async function getVendor(vendorId: string): Promise<Vendor | null> {
     query GetVendor($vendorId: ID!) {
       getVendor(vendorId: $vendorId) {
         id ownerId name address contactDetails workingHours
-        status deliveryType deliveryValue hasBankAccount whatsappNumber refPrefix
+        status deliveryType deliveryValue hasBankAccount digitalPaymentsEnabled whatsappNumber refPrefix
         imageUrl description rating totalReviews createdAt
         location { lat lng }
       }
@@ -49,7 +49,7 @@ export async function getAllVendors(status?: VendorStatus): Promise<Vendor[]> {
     query GetAllVendors($status: VendorStatus) {
       getAllVendors(status: $status) {
         id ownerId name address contactDetails status
-        deliveryType deliveryValue hasBankAccount whatsappNumber
+        deliveryType deliveryValue hasBankAccount digitalPaymentsEnabled whatsappNumber
         imageUrl description rating totalReviews createdAt
         location { lat lng }
       }
@@ -67,8 +67,8 @@ export async function getNearbyVendors(
   const query = /* GraphQL */ `
     query GetNearbyVendors($location: LocationInput!, $radiusKm: Float) {
       getNearbyVendors(location: $location, radiusKm: $radiusKm) {
-        id name address status deliveryType deliveryValue hasBankAccount
-        imageUrl description rating totalReviews createdAt
+        id name address status deliveryType deliveryValue hasBankAccount digitalPaymentsEnabled
+        whatsappNumber contactDetails imageUrl description rating totalReviews createdAt
         location { lat lng }
       }
     }
@@ -295,6 +295,8 @@ export interface CreateVendorApplicationInput {
   address: string;
   description?: string;
   hasBankAccount: boolean;
+  whatsappNumber?: string;
+  location?: { lat: number; lng: number };
 }
 
 export async function createVendorApplication(
@@ -304,7 +306,7 @@ export async function createVendorApplication(
     mutation CreateVendorApplication($input: CreateVendorApplicationInput!) {
       createVendorApplication(input: $input) {
         id applicantName phone email businessName address description
-        hasBankAccount status createdAt
+        hasBankAccount whatsappNumber status createdAt
       }
     }
   `;
@@ -334,7 +336,7 @@ export async function approveVendor(applicationId: string): Promise<Vendor> {
   const mutation = /* GraphQL */ `
     mutation ApproveVendor($applicationId: ID!) {
       approveVendor(applicationId: $applicationId) {
-        id name address status createdAt
+        id name address status whatsappNumber createdAt
       }
     }
   `;
@@ -417,11 +419,13 @@ export interface UpdateVendorProfileInput {
   vendorId: string;
   name?: string;
   address?: string;
+  location?: { lat: number; lng: number };
   contactDetails?: string;
   whatsappNumber?: string;
   deliveryType?: 'PERCENTAGE' | 'FLAT';
   deliveryValue?: number;
   hasBankAccount?: boolean;
+  digitalPaymentsEnabled?: boolean;
   description?: string;
   imageUrl?: string;
 }
@@ -431,8 +435,9 @@ export async function updateVendorProfile(input: UpdateVendorProfileInput): Prom
     mutation UpdateVendorProfile($input: UpdateVendorProfileInput!) {
       updateVendorProfile(input: $input) {
         id ownerId name address contactDetails status
-        deliveryType deliveryValue hasBankAccount whatsappNumber
+        deliveryType deliveryValue hasBankAccount digitalPaymentsEnabled whatsappNumber
         imageUrl description createdAt
+        location { lat lng }
       }
     }
   `;

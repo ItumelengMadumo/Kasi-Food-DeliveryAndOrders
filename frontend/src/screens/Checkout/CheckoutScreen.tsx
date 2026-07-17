@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle } from 'lucide-react';
 import { useCartStore } from '../../state/cartStore';
 import { useAuthStore } from '../../state/authStore';
 import { useOrderStore } from '../../state/orderStore';
-import { createOrder, initiatePayment } from '../../services/api';
+import { createOrder, getVendor, initiatePayment } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Input, Textarea } from '../../components/ui/Input';
-import type { DeliveryMethod, PaymentMethod, PaymentProvider } from '../../types';
+import type { DeliveryMethod, PaymentMethod, PaymentProvider, Vendor } from '../../types';
 
 type CheckoutStep = 'details' | 'payment' | 'confirm';
 
@@ -20,6 +20,14 @@ export function CheckoutScreen() {
   const [step, setStep] = useState<CheckoutStep>('details');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [vendor, setVendor] = useState<Vendor | null>(null);
+
+  useEffect(() => {
+    if (!vendorId) return;
+    getVendor(vendorId)
+      .then(setVendor)
+      .catch((err) => console.error('Failed to load vendor for checkout:', err));
+  }, [vendorId]);
 
   // Form state
   const [guestName, setGuestName] = useState(user?.name || '');
@@ -166,7 +174,9 @@ export function CheckoutScreen() {
         <section className="bg-white rounded-xl border border-stone-100 p-4">
           <h2 className="font-semibold text-stone-800 mb-3">How will you pay?</h2>
           <div className="space-y-2">
-            {PAYMENT_OPTIONS.map(({ value, label, description }) => (
+            {PAYMENT_OPTIONS.filter(
+              (option) => option.value !== 'DIGITAL' || vendor?.digitalPaymentsEnabled
+            ).map(({ value, label, description }) => (
               <button
                 key={value}
                 onClick={() => setPaymentMethod(value)}

@@ -1,13 +1,16 @@
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Clock, Star, Truck } from 'lucide-react';
 import { Card } from './ui/Card';
+import { formatDistanceKm } from '../domain/distance';
 import type { Vendor } from '../types';
 
 interface VendorCardProps {
   vendor: Vendor;
+  /** Straight-line distance from the customer, in km — shown when known. */
+  distanceKm?: number;
 }
 
-export function VendorCard({ vendor }: VendorCardProps) {
+export function VendorCard({ vendor, distanceKm }: VendorCardProps) {
   const navigate = useNavigate();
 
   return (
@@ -68,10 +71,14 @@ export function VendorCard({ vendor }: VendorCardProps) {
             </span>
           )}
 
-          {/* Address */}
+          {/* Address / distance */}
           <span className="flex items-center gap-1">
             <MapPin size={14} />
-            <span className="truncate max-w-[160px]">{vendor.address}</span>
+            {distanceKm != null ? (
+              <span className="font-medium text-kasi-orange">{formatDistanceKm(distanceKm)}</span>
+            ) : (
+              <span className="truncate max-w-[160px]">{vendor.address}</span>
+            )}
           </span>
         </div>
 

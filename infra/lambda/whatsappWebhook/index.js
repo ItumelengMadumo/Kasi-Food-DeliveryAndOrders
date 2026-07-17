@@ -15,9 +15,7 @@
  *
  * Environment variables:
  *   TABLE_NAME               — DynamoDB table name (default: KasiMainTable)
- *   TWILIO_ACCOUNT_SID       — Twilio Account SID
- *   TWILIO_AUTH_TOKEN        — Twilio Auth Token
- *   TWILIO_WHATSAPP_FROM     — Twilio sender number (e.g. +14155238886)
+ *   WHATSAPP_SECRET_ARN      — Secrets Manager secret: {accountSid, authToken, whatsappFrom}
  *   WEBHOOK_URL              — Public URL of this function (for signature validation)
  *   NOTIFICATION_LAMBDA_ARN  — ARN of sendWhatsAppNotification Lambda
  */
@@ -45,6 +43,7 @@ const {
   generateOrderNumber,
   derivePrefix,
 } = require('../_shared/orderNumber');
+const { getWhatsAppSecrets } = require('../_shared/secrets');
 
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient);
@@ -52,9 +51,6 @@ const lambdaClient = new LambdaClient({});
 
 const TABLE_NAME = process.env.TABLE_NAME || 'KasiMainTable';
 const SESSION_TTL_SECONDS = 30 * 60; // 30 minutes
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
-const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM || '';
 const WEBHOOK_URL = process.env.WEBHOOK_URL || '';
 const NOTIFICATION_LAMBDA_ARN = process.env.NOTIFICATION_LAMBDA_ARN || '';
 
@@ -64,8 +60,8 @@ const NOTIFICATION_LAMBDA_ARN = process.env.NOTIFICATION_LAMBDA_ARN || '';
  * Validate an incoming Twilio webhook request signature.
  * Returns true if validation is disabled (credentials not configured).
  */
-function validateTwilioSignature(headers, rawBody) {
-  if (!WEBHOOK_URL || !TWILIO_AUTH_TOKEN) return true;
+function validateTwilioSignature(headers, rawBody, authToken) {
+  if (!WEBHOOK_URL || !authToken) return true;
 
   const signature =
     headers['X-Twilio-Signature'] || headers['x-twilio-signature'] || '';
@@ -79,7 +75,7 @@ function validateTwilioSignature(headers, rawBody) {
   }
 
   const expected = crypto
-    .createHmac('sha1', TWILIO_AUTH_TOKEN)
+    .createHmac('sha1', authToken)
     .update(Buffer.from(str))
     .digest('base64');
 
@@ -103,15 +99,15 @@ function parseFormBody(rawBody) {
 /**
  * Send a WhatsApp message via Twilio REST API.
  */
-function sendTwilioMessage(to, body) {
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM) {
+function sendTwilioMessage(to, body, { accountSid, authToken, whatsappFrom }) {
+  if (!accountSid || !authToken || !whatsappFrom) {
     console.log('[whatsappWebhook] Twilio not configured — would reply to', to, ':', body);
     return Promise.resolve({ success: false, reason: 'not_configured' });
   }
 
-  const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+  const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
   const postData = new URLSearchParams({
-    From: `whatsapp:${TWILIO_WHATSAPP_FROM}`,
+    From: `whatsapp:${whatsappFrom}`,
     To: `whatsapp:${to}`,
     Body: body,
   }).toString();
@@ -120,7 +116,7 @@ function sendTwilioMessage(to, body) {
     const req = https.request(
       {
         hostname: 'api.twilio.com',
-        path: `/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
+        path: `/2010-04-01/Accounts/${accountSid}/Messages.json`,
         method: 'POST',
         headers: {
           Authorization: `Basic ${auth}`,
@@ -601,8 +597,10 @@ exports.handler = async (event) => {
       ? Buffer.from(event.body, 'base64').toString('utf-8')
       : event.body || '';
 
+    const twilioSecrets = await getWhatsAppSecrets();
+
     // Validate Twilio request signature
-    if (!validateTwilioSignature(event.headers || {}, rawBody)) {
+    if (!validateTwilioSignature(event.headers || {}, rawBody, twilioSecrets.authToken)) {
       console.warn('[whatsappWebhook] Invalid Twilio signature — rejecting request');
       return { statusCode: 403, body: 'Forbidden' };
     }
@@ -630,7 +628,7 @@ exports.handler = async (event) => {
     const replyText = await processMessage(from, vendor, session, messageBody);
 
     // Send reply via Twilio REST API
-    await sendTwilioMessage(from, replyText);
+    await sendTwilioMessage(from, replyText, twilioSecrets);
 
     // Return empty TwiML (reply was sent via REST, not TwiML)
     return emptyTwiml;
