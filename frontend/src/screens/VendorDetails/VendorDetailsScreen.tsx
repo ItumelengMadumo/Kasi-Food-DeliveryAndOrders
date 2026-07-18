@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Phone, MessageCircle, ShoppingCart, Plus, Minus } from 'lucide-react';
-import { getVendor, getVendorMenu } from '../../services/api';
+import { ArrowLeft, MapPin, Phone, MessageCircle, ShoppingCart, Plus, Minus, PhoneCall } from 'lucide-react';
+import { getVendor, getVendorMenu, initiateVoiceCall } from '../../services/api';
 import { useCartStore } from '../../state/cartStore';
 import { LoadingSpinner } from '../../components/ui/Card';
 import { StarRating } from '../../components/ui/StatusBadge';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
 import { telHref, whatsappHref } from '../../domain/contact';
 import type { Vendor, MenuItem } from '../../types';
 
@@ -16,6 +18,32 @@ export function VendorDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const { items, addItem, removeItem, updateQuantity, vendorId: cartVendorId, subtotal } = useCartStore();
+
+  // Masked-caller-ID bridge call
+  const [showCallForm, setShowCallForm] = useState(false);
+  const [callPhone, setCallPhone] = useState('');
+  const [callState, setCallState] = useState<'idle' | 'calling' | 'ringing' | 'error'>('idle');
+  const [callError, setCallError] = useState('');
+
+  async function handleRequestCall() {
+    if (!vendor) return;
+    if (!/^\+\d{8,15}$/.test(callPhone.replace(/\s/g, ''))) {
+      setCallError('Enter your number in international format, e.g. +27721234567');
+      return;
+    }
+    setCallState('calling');
+    setCallError('');
+    try {
+      await initiateVoiceCall(vendor.id, callPhone.replace(/\s/g, ''));
+      setCallState('ringing');
+    } catch (err) {
+      console.error('Failed to initiate call:', err);
+      setCallState('error');
+      setCallError(
+        err instanceof Error ? err.message : 'Could not place the call. Try WhatsApp or dial directly.'
+      );
+    }
+  }
 
   useEffect(() => {
     if (vendorId) loadVendorData(vendorId);
@@ -89,32 +117,75 @@ export function VendorDetailsScreen() {
           )}
         </div>
 
-        {/* Direct contact — hands off to the customer's own phone/WhatsApp,
-            using the vendor's stored number. No backend involved. */}
+        {/* Direct contact. WhatsApp hands off to the customer's own app using
+            the vendor's stored number (no backend). Call tries a masked-
+            caller-ID bridge call first (protects the customer's real
+            number); if that's not set up yet, it falls back to a plain
+            tel: link that dials straight from the customer's phone. */}
         {(vendor.contactDetails || vendor.whatsappNumber) && (
-          <div className="mt-3 flex gap-2">
-            {vendor.contactDetails && (
-              <a
-                href={telHref(vendor.contactDetails)}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-stone-200 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50"
-              >
-                <Phone size={16} />
-                Call
-              </a>
-            )}
-            {vendor.whatsappNumber && (
-              <a
-                href={whatsappHref(
-                  vendor.whatsappNumber,
-                  `Hi ${vendor.name}, I'd like to place an order.`
+          <div className="mt-3 space-y-2">
+            <div className="flex gap-2">
+              {vendor.contactDetails && (
+                <button
+                  type="button"
+                  onClick={() => setShowCallForm((v) => !v)}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-stone-200 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50"
+                >
+                  <Phone size={16} />
+                  Call
+                </button>
+              )}
+              {vendor.whatsappNumber && (
+                <a
+                  href={whatsappHref(
+                    vendor.whatsappNumber,
+                    `Hi ${vendor.name}, I'd like to place an order.`
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-700"
+                >
+                  <MessageCircle size={16} />
+                  WhatsApp
+                </a>
+              )}
+            </div>
+
+            {showCallForm && vendor.contactDetails && (
+              <div className="rounded-xl border border-stone-200 p-3 space-y-2">
+                {callState === 'ringing' ? (
+                  <p className="text-sm text-green-700 flex items-center gap-2">
+                    <PhoneCall size={16} />
+                    Calling you now — answer and we'll connect you to {vendor.name}.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-xs text-stone-500">
+                      We'll call your phone first, then connect you to {vendor.name} — your
+                      number stays private.
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        value={callPhone}
+                        onChange={(e) => setCallPhone(e.target.value)}
+                        placeholder="+27 72 000 0000"
+                        type="tel"
+                      />
+                      <Button onClick={handleRequestCall} loading={callState === 'calling'}>
+                        Call Me
+                      </Button>
+                    </div>
+                    {callState === 'error' && (
+                      <div className="text-xs text-red-600">
+                        {callError}{' '}
+                        <a href={telHref(vendor.contactDetails)} className="underline font-semibold">
+                          Dial {vendor.contactDetails} directly
+                        </a>
+                      </div>
+                    )}
+                  </>
                 )}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-700"
-              >
-                <MessageCircle size={16} />
-                WhatsApp
-              </a>
+              </div>
             )}
           </div>
         )}

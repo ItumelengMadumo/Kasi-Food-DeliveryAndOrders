@@ -273,18 +273,22 @@ export class KasiStack extends Stack {
         // ─────────────────────────────────────────────────────────────
         //
         // Seeded blank — fill in via Secrets Manager (accountSid, authToken,
-        // whatsappFrom in E.164 format) once real Twilio credentials are on
-        // hand. A leaked Twilio auth token is a direct cost/abuse vector, so
-        // this mirrors the payments-secret pattern rather than plain env vars.
+        // whatsappFrom, voiceNumber — all in E.164 format) once real Twilio
+        // credentials are on hand. A leaked Twilio auth token is a direct
+        // cost/abuse vector, so this mirrors the payments-secret pattern
+        // rather than plain env vars. voiceNumber is a separate Voice-capable
+        // number from whatsappFrom — WhatsApp Business API senders aren't
+        // voice-capable — used as the masked caller ID for bridge calls.
         const whatsappSecret = new secretsmanager.Secret(this, 'WhatsAppSecret', {
             secretName: `kasi-whatsapp-${stage}`,
-            description: 'Twilio WhatsApp credentials',
+            description: 'Twilio WhatsApp + Voice credentials',
             removalPolicy:
                 stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
             secretObjectValue: {
                 accountSid: SecretValue.unsafePlainText(''),
                 authToken: SecretValue.unsafePlainText(''),
                 whatsappFrom: SecretValue.unsafePlainText(''),
+                voiceNumber: SecretValue.unsafePlainText(''),
             },
         });
 
@@ -336,6 +340,25 @@ export class KasiStack extends Stack {
                 whatsappWebhookFn
             ),
         });
+
+        // Masked-caller-ID bridge calling — customer taps Call, Twilio rings
+        // them, then bridges to the vendor's real number using our own Voice
+        // number as caller ID. No inbound webhook needed (see Lambda docstring).
+        const initiateVoiceCallFn = new NodejsFunction(this, 'InitiateVoiceCallFn', {
+            functionName: `kasi-initiate-voice-call-${stage}`,
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(lambdaSrcRoot, 'initiateVoiceCall', 'index.js'),
+            projectRoot: lambdaProjectRoot,
+            handler: 'handler',
+            timeout: Duration.seconds(15),
+            environment: {
+                TABLE_NAME: table.tableName,
+                WHATSAPP_SECRET_ARN: whatsappSecret.secretArn,
+            },
+            bundling: { target: 'node20', externalModules: ['@aws-sdk/*'] },
+        });
+        table.grantReadData(initiateVoiceCallFn);
+        whatsappSecret.grantRead(initiateVoiceCallFn);
 
         // ─────────────────────────────────────────────────────────────
         // Cognito
@@ -452,6 +475,10 @@ export class KasiStack extends Stack {
         const approveVendorSource = api.addLambdaDataSource(
             'ApproveVendorSource',
             approveVendorFn
+        );
+        const initiateVoiceCallSource = api.addLambdaDataSource(
+            'InitiateVoiceCallSource',
+            initiateVoiceCallFn
         );
         const noneSource = api.addNoneDataSource('NoneSource');
 
@@ -584,6 +611,13 @@ export class KasiStack extends Stack {
             typeName: 'Mutation',
             fieldName: 'approveVendor',
             dataSource: approveVendorSource,
+        });
+
+        new appsync.Resolver(this, 'Res-Mutation-initiateVoiceCall', {
+            api,
+            typeName: 'Mutation',
+            fieldName: 'initiateVoiceCall',
+            dataSource: initiateVoiceCallSource,
         });
 
         // ─────────────────────────────────────────────────────────────

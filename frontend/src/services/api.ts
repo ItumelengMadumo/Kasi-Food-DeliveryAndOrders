@@ -483,6 +483,32 @@ export async function getVendorBankDetails(vendorId: string): Promise<BankDetail
     .getVendorBankDetails;
 }
 
+// ── Voice calling ──────────────────────────────────
+
+export interface VoiceCallResult {
+  status: string;
+  callSid?: string;
+}
+
+/** Masked-caller-ID bridge call: Twilio rings the customer, then bridges to the vendor. */
+export async function initiateVoiceCall(
+  vendorId: string,
+  customerPhone: string
+): Promise<VoiceCallResult> {
+  const mutation = /* GraphQL */ `
+    mutation InitiateVoiceCall($vendorId: ID!, $customerPhone: String!) {
+      initiateVoiceCall(vendorId: $vendorId, customerPhone: $customerPhone) {
+        status callSid
+      }
+    }
+  `;
+  const result = await client().graphql({
+    query: mutation,
+    variables: { vendorId, customerPhone },
+  });
+  return (result as { data: { initiateVoiceCall: VoiceCallResult } }).data.initiateVoiceCall;
+}
+
 // ── Payments ───────────────────────────────────────
 
 export interface PaymentInitiation {
