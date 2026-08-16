@@ -565,6 +565,12 @@ export class KasiStack extends Stack {
             'Mutation.saveWhatsAppPaymentProof.js',
             ddbSource
         );
+        jsResolver(
+            'Mutation',
+            'updatePaymentProofStatus',
+            'Mutation.updatePaymentProofStatus.js',
+            ddbSource
+        );
         jsResolver('Mutation', 'recordRevenue', 'Mutation.recordRevenue.js', ddbSource);
         jsResolver('Mutation', 'upsertInventoryItem', 'Mutation.upsertInventoryItem.js', ddbSource);
         jsResolver(

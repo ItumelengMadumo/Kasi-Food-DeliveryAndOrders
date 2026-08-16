@@ -512,6 +512,8 @@ type Mutation {
 
   # WhatsApp / payment proof tracking
   saveWhatsAppPaymentProof(input: SaveWhatsAppPaymentProofInput!): PaymentProof!
+  updatePaymentProofStatus(orderId: ID!, proofId: ID!, status: PaymentProofStatus!): PaymentProof!
+    @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
 
   # Revenue tracking
   recordRevenue(input: RecordRevenueInput!): RevenueEntry!

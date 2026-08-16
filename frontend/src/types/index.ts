@@ -142,6 +142,25 @@ export interface Order {
   updatedAt: string;
 }
 
+export type PaymentProofStatus = 'PENDING_REVIEW' | 'VERIFIED' | 'FLAGGED';
+
+export interface PaymentProof {
+  id: string;
+  orderId: string;
+  vendorId: string;
+  senderPhone: string;
+  senderName?: string;
+  amount?: number;
+  reference?: string;
+  note?: string;
+  attachmentName: string;
+  channel: string;
+  status: PaymentProofStatus;
+  receivedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Review {
   id: string;
   vendorId: string;
