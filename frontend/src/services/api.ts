@@ -15,6 +15,8 @@ import type {
   OrderStatus,
   VendorStatus,
   BankDetails,
+  PaymentProof,
+  PaymentProofStatus,
 } from '../types';
 
 // Lazy singleton — generateClient() requires Amplify.configure() to have run first.
@@ -411,6 +413,75 @@ export async function markOrderPaid(orderId: string): Promise<Order> {
     authMode: 'userPool',
   });
   return (result as { data: { markOrderPaid: Order } }).data.markOrderPaid;
+}
+
+// ── WhatsApp EFT Payment Proofs ───────────────────
+
+const paymentProofFields = /* GraphQL */ `
+  id orderId vendorId senderPhone senderName amount reference note
+  attachmentName channel status receivedAt createdAt updatedAt
+`;
+
+export async function getOrderPaymentProofs(orderId: string): Promise<PaymentProof[]> {
+  const query = /* GraphQL */ `
+    query GetOrderPaymentProofs($orderId: ID!) {
+      getOrderPaymentProofs(orderId: $orderId) { ${paymentProofFields} }
+    }
+  `;
+  const result = await client().graphql({
+    query,
+    variables: { orderId },
+    authMode: 'userPool',
+  });
+  return (result as { data: { getOrderPaymentProofs: PaymentProof[] } }).data
+    .getOrderPaymentProofs;
+}
+
+export interface SaveWhatsAppPaymentProofInput {
+  orderId: string;
+  vendorId: string;
+  senderPhone: string;
+  senderName?: string;
+  amount?: number;
+  reference?: string;
+  note?: string;
+  attachmentName: string;
+}
+
+export async function saveWhatsAppPaymentProof(
+  input: SaveWhatsAppPaymentProofInput
+): Promise<PaymentProof> {
+  const mutation = /* GraphQL */ `
+    mutation SaveWhatsAppPaymentProof($input: SaveWhatsAppPaymentProofInput!) {
+      saveWhatsAppPaymentProof(input: $input) { ${paymentProofFields} }
+    }
+  `;
+  const result = await client().graphql({
+    query: mutation,
+    variables: { input },
+    authMode: 'userPool',
+  });
+  return (result as { data: { saveWhatsAppPaymentProof: PaymentProof } }).data
+    .saveWhatsAppPaymentProof;
+}
+
+export async function updatePaymentProofStatus(
+  orderId: string,
+  proofId: string,
+  status: PaymentProofStatus
+): Promise<PaymentProof> {
+  const mutation = /* GraphQL */ `
+    mutation UpdatePaymentProofStatus($orderId: ID!, $proofId: ID!, $status: PaymentProofStatus!) {
+      updatePaymentProofStatus(orderId: $orderId, proofId: $proofId, status: $status) { ${paymentProofFields} }
+    }
+  `;
+  const result = await client().graphql({
+    query: mutation,
+    variables: { orderId, proofId, status },
+    authMode: 'userPool',
+  });
+  return (result as { data: { updatePaymentProofStatus: PaymentProof } }).data
+    .updatePaymentProofStatus;
 }
 
 // ── Vendor Profile Update ─────────────────────────

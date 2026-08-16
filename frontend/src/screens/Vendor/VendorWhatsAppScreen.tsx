@@ -2,30 +2,23 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, MessageCircle, Smartphone } from 'lucide-react';
 import { useAuthStore } from '../../state/authStore';
-import { getVendor, getVendorOrders } from '../../services/api';
+import {
+  getVendor,
+  getVendorOrders,
+  getOrderPaymentProofs,
+  saveWhatsAppPaymentProof,
+  updatePaymentProofStatus,
+} from '../../services/api';
 import { Input, Textarea } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { LoadingSpinner } from '../../components/ui/Card';
 import { displayOrderNumber } from '../../domain/orderNumber';
-import type { Order, Vendor } from '../../types';
+import type { Order, PaymentProof, PaymentProofStatus, Vendor } from '../../types';
 
 const DEMO_VENDOR_ID = 'demo-vendor-1';
 
-type ProofStatus = 'PENDING_REVIEW' | 'VERIFIED' | 'FLAGGED';
-
-interface EftProofRecord {
-  id: string;
-  orderId: string;
-  senderPhone: string;
-  senderName?: string;
-  amount?: number;
-  reference?: string;
-  note?: string;
-  receivedAt: string;
-  channel: 'WHATSAPP';
-  attachmentName: string;
-  status: ProofStatus;
-}
+type ProofStatus = PaymentProofStatus;
+type EftProofRecord = PaymentProof;
 
 const proofStatusClasses: Record<ProofStatus, string> = {
   PENDING_REVIEW: 'bg-amber-50 text-amber-700',
@@ -53,8 +46,6 @@ export function VendorWhatsAppScreen() {
   const [proofAttachmentName, setProofAttachmentName] = useState('');
   const [proofNote, setProofNote] = useState('');
 
-  const proofStorageKey = `kasi-vendor-eft-proofs-${vendorId}`;
-
   const eftOrders = useMemo(
     () => orders.filter((order) => order.paymentMethod === 'EFT'),
     [orders]
@@ -73,7 +64,12 @@ export function VendorWhatsAppScreen() {
         ]);
         if (v) setVendor(v);
         setOrders(vendorOrders);
-        hydrateProofsFromStorage();
+
+        const eftOrderList = vendorOrders.filter((o) => o.paymentMethod === 'EFT');
+        const proofLists = await Promise.all(
+          eftOrderList.map((o) => getOrderPaymentProofs(o.id))
+        );
+        setProofs(proofLists.flat());
       } catch {
         // Demo fallback
         setOrders(buildDemoOrders(vendorId));
@@ -86,29 +82,13 @@ export function VendorWhatsAppScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
 
-  function hydrateProofsFromStorage() {
-    try {
-      const saved = localStorage.getItem(proofStorageKey);
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as EftProofRecord[];
-      setProofs(parsed);
-    } catch {
-      return;
-    }
-  }
-
-  function persistProofs(nextProofs: EftProofRecord[]) {
-    setProofs(nextProofs);
-    localStorage.setItem(proofStorageKey, JSON.stringify(nextProofs));
-  }
-
   useEffect(() => {
     if (!selectedProofOrderId && eftOrders.length > 0) {
       setSelectedProofOrderId(eftOrders[0].id);
     }
   }, [eftOrders, selectedProofOrderId]);
 
-  function handleAddProofRecord(e: React.FormEvent) {
+  async function handleAddProofRecord(e: React.FormEvent) {
     e.preventDefault();
 
     if (!selectedProofOrderId) {
@@ -124,35 +104,38 @@ export function VendorWhatsAppScreen() {
       return;
     }
 
-    const nextProof: EftProofRecord = {
-      id: `proof_${Date.now()}`,
-      orderId: selectedProofOrderId,
-      senderPhone: proofSenderPhone.trim(),
-      senderName: proofSenderName.trim() || undefined,
-      amount: proofAmount ? Number(proofAmount) : undefined,
-      reference: proofReference.trim() || undefined,
-      note: proofNote.trim() || undefined,
-      receivedAt: new Date().toISOString(),
-      channel: 'WHATSAPP',
-      attachmentName: proofAttachmentName.trim(),
-      status: 'PENDING_REVIEW',
-    };
+    try {
+      const nextProof = await saveWhatsAppPaymentProof({
+        orderId: selectedProofOrderId,
+        vendorId,
+        senderPhone: proofSenderPhone.trim(),
+        senderName: proofSenderName.trim() || undefined,
+        amount: proofAmount ? Number(proofAmount) : undefined,
+        reference: proofReference.trim() || undefined,
+        note: proofNote.trim() || undefined,
+        attachmentName: proofAttachmentName.trim(),
+      });
 
-    persistProofs([nextProof, ...proofs]);
-    setError('');
-    setProofSenderPhone('');
-    setProofSenderName('');
-    setProofAmount('');
-    setProofReference('');
-    setProofAttachmentName('');
-    setProofNote('');
+      setProofs([nextProof, ...proofs]);
+      setError('');
+      setProofSenderPhone('');
+      setProofSenderName('');
+      setProofAmount('');
+      setProofReference('');
+      setProofAttachmentName('');
+      setProofNote('');
+    } catch {
+      setError('Could not save the proof record. Please try again.');
+    }
   }
 
-  function handleProofStatusChange(proofId: string, status: ProofStatus) {
-    const nextProofs = proofs.map((proof) =>
-      proof.id === proofId ? { ...proof, status } : proof
-    );
-    persistProofs(nextProofs);
+  async function handleProofStatusChange(proof: EftProofRecord, status: ProofStatus) {
+    try {
+      const updated = await updatePaymentProofStatus(proof.orderId, proof.id, status);
+      setProofs((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    } catch {
+      setError('Could not update the proof status. Please try again.');
+    }
   }
 
   if (loading) {
@@ -441,7 +424,7 @@ export function VendorWhatsAppScreen() {
                                   size="sm"
                                   variant="secondary"
                                   onClick={() =>
-                                    handleProofStatusChange(proof.id, 'VERIFIED')
+                                    handleProofStatusChange(proof, 'VERIFIED')
                                   }
                                 >
                                   Mark Verified
@@ -453,7 +436,7 @@ export function VendorWhatsAppScreen() {
                                   className="border border-stone-300"
                                   onClick={() =>
                                     handleProofStatusChange(
-                                      proof.id,
+                                      proof,
                                       'PENDING_REVIEW'
                                     )
                                   }
@@ -465,7 +448,7 @@ export function VendorWhatsAppScreen() {
                                   size="sm"
                                   variant="danger"
                                   onClick={() =>
-                                    handleProofStatusChange(proof.id, 'FLAGGED')
+                                    handleProofStatusChange(proof, 'FLAGGED')
                                   }
                                 >
                                   Flag
@@ -535,6 +518,7 @@ function buildDemoProofs(vendorId: string): EftProofRecord[] {
     {
       id: 'proof-demo-001',
       orderId: demoOrders[0].id,
+      vendorId,
       senderPhone: '+27 72 111 2222',
       senderName: 'Sipho Mokoena',
       amount: 120,
@@ -544,10 +528,13 @@ function buildDemoProofs(vendorId: string): EftProofRecord[] {
       channel: 'WHATSAPP',
       attachmentName: 'eft-proof-sipho.jpg',
       status: 'PENDING_REVIEW',
+      createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+      updatedAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
     },
     {
       id: 'proof-demo-002',
       orderId: demoOrders[1].id,
+      vendorId,
       senderPhone: '+27 83 333 4444',
       senderName: 'Nomvula Zulu',
       amount: 205,
@@ -557,6 +544,8 @@ function buildDemoProofs(vendorId: string): EftProofRecord[] {
       channel: 'WHATSAPP',
       attachmentName: 'nomvula-pop.pdf',
       status: 'VERIFIED',
+      createdAt: new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString(),
+      updatedAt: new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString(),
     },
   ];
 }
