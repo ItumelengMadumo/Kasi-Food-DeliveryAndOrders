@@ -7,6 +7,24 @@ import { util } from '@aws-appsync/utils';
 export function request(ctx) {
   const { orderId } = ctx.args;
 
+  const groups = (ctx.identity && ctx.identity.groups) || [];
+  const isAdmin = groups.includes('ADMIN') || groups.includes('SUPER_ADMIN');
+  if (!isAdmin && !(ctx.identity && ctx.identity.sub)) {
+    util.unauthorized();
+  }
+
+  const expressionValues = {
+    ':ps': util.dynamodb.toDynamoDB('PAID'),
+    ':ua': util.dynamodb.toDynamoDB(util.time.nowISO8601()),
+  };
+
+  // Non-admins may only mark paid the orders belonging to their own vendor.
+  let conditionExpression = 'attribute_exists(PK)';
+  if (!isAdmin) {
+    conditionExpression += ' AND vendorId = :ownerId';
+    expressionValues[':ownerId'] = util.dynamodb.toDynamoDB(ctx.identity.sub);
+  }
+
   return {
     operation: 'UpdateItem',
     key: {
@@ -15,20 +33,21 @@ export function request(ctx) {
     },
     update: {
       expression: 'SET paymentStatus = :ps, updatedAt = :ua',
-      expressionValues: {
-        ':ps': util.dynamodb.toDynamoDB('PAID'),
-        ':ua': util.dynamodb.toDynamoDB(util.time.nowISO8601()),
-      },
+      expressionValues,
     },
     condition: {
-      // Ensure the order exists before updating
-      expression: 'attribute_exists(PK)',
+      expression: conditionExpression,
     },
   };
 }
 
 export function response(ctx) {
-  if (ctx.error) util.error(ctx.error.message, ctx.error.type);
+  if (ctx.error) {
+    if (ctx.error.type === 'DynamoDB:ConditionalCheckFailedException') {
+      util.unauthorized();
+    }
+    util.error(ctx.error.message, ctx.error.type);
+  }
 
   const item = ctx.result;
   return {
