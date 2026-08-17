@@ -42,6 +42,15 @@ export function normalizePhoneNumber(phone: string) {
     return compact;
 }
 
+// The Cognito user pool has `phone` configured as a sign-in alias, which
+// means the actual Username cannot itself look like a phone number (Cognito
+// rejects it: "Username cannot be of phone number format..."). Derive a
+// stable, non-phone-shaped username instead — phone_number is still set as
+// a user attribute so the alias itself works for sign-in once confirmed.
+function usernameFromPhone(phone: string) {
+    return `u${normalizePhoneNumber(phone).replace('+', '')}`;
+}
+
 export async function loadAuthenticatedUser(): Promise<User | null> {
     try {
         const currentUser = await getCurrentUser();
@@ -85,15 +94,15 @@ export async function registerWithCognito(input: {
     email?: string;
     password: string;
 }) {
-    const username = normalizePhoneNumber(input.phone);
+    const phoneNumber = normalizePhoneNumber(input.phone);
 
     return signUp({
-        username,
+        username: usernameFromPhone(input.phone),
         password: input.password,
         options: {
             userAttributes: {
                 name: input.name.trim(),
-                phone_number: username,
+                phone_number: phoneNumber,
                 ...(input.email?.trim() ? { email: input.email.trim() } : {}),
             },
         },
@@ -102,18 +111,18 @@ export async function registerWithCognito(input: {
 
 export async function confirmRegistration(phone: string, confirmationCode: string) {
     return confirmSignUp({
-        username: normalizePhoneNumber(phone),
+        username: usernameFromPhone(phone),
         confirmationCode: confirmationCode.trim(),
     });
 }
 
 export async function resendRegistrationCode(phone: string) {
-    return resendSignUpCode({ username: normalizePhoneNumber(phone) });
+    return resendSignUpCode({ username: usernameFromPhone(phone) });
 }
 
 export async function signInWithCognito(phone: string, password: string): Promise<User> {
     const result = await signIn({
-        username: normalizePhoneNumber(phone),
+        username: usernameFromPhone(phone),
         password,
     });
 
