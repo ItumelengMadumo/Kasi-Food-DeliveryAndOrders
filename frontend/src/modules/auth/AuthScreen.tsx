@@ -209,7 +209,7 @@ export function AuthScreen() {
               label="Verification Code *"
               value={confirmationCode}
               onChange={(e) => setConfirmationCode(e.target.value)}
-              placeholder="Enter the code from SMS or email"
+              placeholder="Enter the SMS code sent to your phone"
               required
             />
           )}
