@@ -367,7 +367,12 @@ export class KasiStack extends Stack {
             userPoolName: `kasi-users-${stage}`,
             selfSignUpEnabled: true,
             signInAliases: { phone: true, email: true, username: true },
-            autoVerify: { email: true },
+            // Phone is the product's primary identifier (WhatsApp ordering),
+            // so it must be auto-verified too, not just email. When both are
+            // auto-verified and a user supplies both, Cognito verifies via
+            // SMS to the phone number. CDK auto-creates the SNS IAM role
+            // needed for SMS delivery since no smsRole is provided.
+            autoVerify: { email: true, phone: true },
             standardAttributes: {
                 phoneNumber: { required: true, mutable: true },
                 email: { required: false, mutable: true },
