@@ -152,6 +152,26 @@ export class KasiStack extends Stack {
         });
         table.grantReadWriteData(updateOrderStatusFn);
 
+        // AppSync's direct JS resolvers can't do trig (Math.sin/cos/sqrt/abs
+        // all fail with "Invalid function"), so haversine distance filtering
+        // for getNearbyVendors needs a real Node runtime.
+        const getNearbyVendorsFn = new NodejsFunction(this, 'GetNearbyVendorsFn', {
+            functionName: `kasi-get-nearby-vendors-${stage}`,
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(lambdaSrcRoot, 'getNearbyVendors', 'index.js'),
+            projectRoot: lambdaProjectRoot,
+            handler: 'handler',
+            timeout: Duration.seconds(10),
+            environment: {
+                TABLE_NAME: table.tableName,
+            },
+            bundling: {
+                target: 'node20',
+                externalModules: ['@aws-sdk/*'],
+            },
+        });
+        table.grantReadData(getNearbyVendorsFn);
+
         // Converts a pending VendorApplication into a live, login-free Vendor
         // record (vendorId is a fresh UUID, independent of any Cognito user) —
         // the core of the operator-driven onboarding flow.
@@ -473,6 +493,10 @@ export class KasiStack extends Stack {
             'UpdateOrderStatusSource',
             updateOrderStatusFn
         );
+        const getNearbyVendorsSource = api.addLambdaDataSource(
+            'GetNearbyVendorsSource',
+            getNearbyVendorsFn
+        );
         const initiatePaymentSource = api.addLambdaDataSource(
             'InitiatePaymentSource',
             initiatePaymentFn
@@ -531,7 +555,6 @@ export class KasiStack extends Stack {
         jsResolver('Query', 'getCustomerOrders', 'Query.getCustomerOrders.js', ddbSource);
         jsResolver('Query', 'getAllVendors', 'Query.getAllVendors.js', ddbSource);
         jsResolver('Query', 'getAllOrders', 'Query.getAllOrders.js', ddbSource);
-        jsResolver('Query', 'getNearbyVendors', 'Query.getNearbyVendors.js', ddbSource);
         jsResolver('Query', 'getVendorReviews', 'Query.getVendorReviews.js', ddbSource);
         jsResolver('Query', 'getOrderPaymentProofs', 'Query.getOrderPaymentProofs.js', ddbSource);
         jsResolver('Query', 'getVendorRevenue', 'Query.getVendorRevenue.js', ddbSource);
@@ -608,6 +631,13 @@ export class KasiStack extends Stack {
             typeName: 'Mutation',
             fieldName: 'updateOrderStatus',
             dataSource: updateOrderStatusSource,
+        });
+
+        new appsync.Resolver(this, 'Res-Query-getNearbyVendors', {
+            api,
+            typeName: 'Query',
+            fieldName: 'getNearbyVendors',
+            dataSource: getNearbyVendorsSource,
         });
 
         new appsync.Resolver(this, 'Res-Mutation-initiatePayment', {
