@@ -1,11 +1,21 @@
-// AppSync JS Resolver — Query.getNearbyVendors
-// Soft-launch scale: still a full table Scan (a geohash GSI or PostGIS via
-// Aurora would only be worth it at a much larger catalog size), but now
-// actually honors `location`/`radiusKm` — previously both were ignored and
-// every APPROVED vendor was returned regardless of distance.
+'use strict';
 
-import { util } from '@aws-appsync/utils';
+/**
+ * getNearbyVendors Lambda Function
+ *
+ * AppSync's direct JS resolvers run a restricted subset of JS with no
+ * trig functions (Math.sin/cos/sqrt/abs all fail with
+ * "Invalid function"), so haversine distance filtering has to happen in
+ * a real Node runtime instead. Still a full table Scan at this vendor
+ * count — a geohash GSI would only be worth it at much larger scale.
+ */
 
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, ScanCommand } = require('@aws-sdk/lib-dynamodb');
+
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+
+const TABLE_NAME = process.env.TABLE_NAME || 'KasiMainTable';
 const EARTH_RADIUS_KM = 6371;
 const DEFAULT_RADIUS_KM = 15;
 
@@ -19,35 +29,30 @@ function distanceKm(a, b) {
   const lat1 = toRadians(a.lat);
   const lat2 = toRadians(b.lat);
 
-  const sinDLat = Math.sin(dLat / 2);
-  const sinDLng = Math.sin(dLng / 2);
-  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 
   return EARTH_RADIUS_KM * c;
 }
 
-export function request(ctx) {
-  return {
-    operation: 'Scan',
-    filter: {
-      expression: 'SK = :sk AND #status = :status',
-      expressionNames: { '#status': 'status' },
-      expressionValues: {
-        ':sk': util.dynamodb.toDynamoDB('PROFILE'),
-        ':status': util.dynamodb.toDynamoDB('APPROVED'),
-      },
-    },
-  };
-}
+exports.handler = async (event) => {
+  const { location, radiusKm } = event.arguments || {};
+  if (!location) throw new Error('location is required');
 
-export function response(ctx) {
-  if (ctx.error) util.error(ctx.error.message, ctx.error.type);
-
-  const { location, radiusKm } = ctx.args;
   const radius = radiusKm || DEFAULT_RADIUS_KM;
 
-  return (ctx.result.items || [])
+  const result = await ddb.send(
+    new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: 'SK = :sk AND #status = :status',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':sk': 'PROFILE', ':status': 'APPROVED' },
+    })
+  );
+
+  return (result.Items || [])
     .filter((item) => typeof item.PK === 'string' && item.PK.indexOf('VENDOR#') === 0)
     .filter((item) => item.location && distanceKm(location, item.location) <= radius)
     .sort((a, b) => distanceKm(location, a.location) - distanceKm(location, b.location))
@@ -72,4 +77,4 @@ export function response(ctx) {
       totalReviews: item.totalReviews,
       createdAt: item.createdAt,
     }));
-}
+};
