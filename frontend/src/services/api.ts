@@ -648,7 +648,6 @@ export function subscribeToNewOrders(
   const sub = (client().graphql({
     query: ON_NEW_ORDER_FOR_VENDOR,
     variables: { vendorId },
-    authMode: 'userPool',
   }) as any).subscribe({
     next: ({ data }: { data: { onNewOrderForVendor: Order } }) => {
       if (data?.onNewOrderForVendor) onNext(data.onNewOrderForVendor);
