@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../state/authStore';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { PopiaNotice } from '../../components/PopiaNotice';
 import type { Role } from '../../types';
 import {
   confirmRegistration,
@@ -35,6 +36,7 @@ export function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmationCode, setConfirmationCode] = useState('');
+  const [consented, setConsented] = useState(false);
 
   useEffect(() => {
     if (requestedMode === 'register' || requestedMode === 'login') {
@@ -95,6 +97,12 @@ export function AuthScreen() {
         const authenticatedUser = await signInWithCognito(phone, password);
         setUser(authenticatedUser);
         navigate(destinationByRole[authenticatedUser.role]);
+        return;
+      }
+
+      if (mode === 'register' && !consented) {
+        setError('Please agree to the Privacy Notice to continue.');
+        setLoading(false);
         return;
       }
 
@@ -179,7 +187,7 @@ export function AuthScreen() {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="e.g. +27 71 234 5678"
-            hint="Cognito phone_number expects international format."
+            hint="Include your country code, e.g. +27 71 234 5678"
             required
             disabled={mode === 'confirm'}
           />
@@ -211,6 +219,14 @@ export function AuthScreen() {
               onChange={(e) => setConfirmationCode(e.target.value)}
               placeholder="Enter the SMS code sent to your phone"
               required
+            />
+          )}
+
+          {mode === 'register' && (
+            <PopiaNotice
+              checked={consented}
+              onChange={setConsented}
+              detail="your name, phone number, and email"
             />
           )}
 
@@ -252,17 +268,6 @@ export function AuthScreen() {
             </Button>
           )}
         </form>
-
-        {/* Vendor apply */}
-        <p className="text-center text-sm text-stone-500 mt-6">
-          Are you a vendor?{' '}
-          <button
-            onClick={() => navigate('/vendor/apply')}
-            className="text-kasi-orange font-semibold hover:underline"
-          >
-            Apply to join
-          </button>
-        </p>
       </div>
     </div>
   );

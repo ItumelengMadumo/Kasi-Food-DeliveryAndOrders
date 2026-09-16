@@ -34,14 +34,14 @@ const OrdersScreen = lazy(() =>
 const AuthScreen = lazy(() =>
   import('./modules/auth/AuthScreen').then((module) => ({ default: module.AuthScreen }))
 );
+const PrivacyNoticeScreen = lazy(() =>
+  import('./screens/Legal/PrivacyNoticeScreen').then((module) => ({
+    default: module.PrivacyNoticeScreen,
+  }))
+);
 const VendorDashboard = lazy(() =>
   import('./screens/Vendor/VendorDashboard').then((module) => ({
     default: module.VendorDashboard,
-  }))
-);
-const VendorApplyScreen = lazy(() =>
-  import('./screens/Vendor/VendorApplyScreen').then((module) => ({
-    default: module.VendorApplyScreen,
   }))
 );
 const VendorMenuEditorScreen = lazy(() =>
@@ -109,12 +109,12 @@ function App() {
             <Route path="/checkout" element={<CheckoutScreen />} />
             <Route path="/orders" element={<OrdersScreen />} />
             <Route path="/orders/:orderId" element={<OrdersScreen />} />
+            <Route path="/privacy" element={<PrivacyNoticeScreen />} />
 
             {/* Auth */}
             <Route path="/auth" element={<AuthRoute />} />
 
             {/* Vendor routes */}
-            <Route path="/vendor/apply" element={<VendorApplyScreen />} />
             <Route
               path="/vendor/dashboard"
               element={

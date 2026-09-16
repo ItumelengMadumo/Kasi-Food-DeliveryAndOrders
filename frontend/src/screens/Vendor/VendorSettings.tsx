@@ -10,6 +10,7 @@ import {
 } from '../../services/api';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { PopiaNotice } from '../../components/PopiaNotice';
 import { LoadingSpinner } from '../../components/ui/Card';
 import type { Vendor } from '../../types';
 
@@ -49,6 +50,7 @@ export function VendorSettings() {
   const [accountNumber, setAccountNumber] = useState('');
   const [accountHolder, setAccountHolder] = useState('');
   const [branchCode, setBranchCode] = useState('');
+  const [bankingConsented, setBankingConsented] = useState(false);
 
   useEffect(() => {
     if (!vendorId) return;
@@ -120,6 +122,11 @@ export function VendorSettings() {
       };
 
       if (Object.values(bankPayload).some(Boolean)) {
+        if (!bankingConsented) {
+          setError('Please agree to the Privacy Notice to save banking details.');
+          setSaving(false);
+          return;
+        }
         await updateVendorBankDetails(vendorId, bankPayload);
       }
 
@@ -293,6 +300,11 @@ export function VendorSettings() {
               placeholder="470010"
             />
           </div>
+          <PopiaNotice
+            checked={bankingConsented}
+            onChange={setBankingConsented}
+            detail="your banking details"
+          />
         </section>
 
         {/* Error / success */}

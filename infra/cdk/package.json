@@ -9,7 +9,7 @@
         "build": "tsc",
         "watch": "tsc -w",
         "synth": "cdk synth",
-        "deploy": "cdk deploy --all --require-approval never",
+        "deploy:prod": "cdk deploy --all --context stage=prod --require-approval never",
         "diff": "cdk diff",
         "destroy": "cdk destroy --all"
     },

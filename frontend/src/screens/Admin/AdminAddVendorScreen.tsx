@@ -5,6 +5,7 @@ import { createVendorApplication, approveVendor, createMenuItem } from '../../se
 import { getCurrentPosition, type Coordinates } from '../../domain/distance';
 import { Button } from '../../components/ui/Button';
 import { Input, Textarea } from '../../components/ui/Input';
+import { PopiaNotice } from '../../components/PopiaNotice';
 
 interface DraftMenuItem {
   name: string;
@@ -29,6 +30,7 @@ export function AdminAddVendorScreen() {
 
   const [menuItems, setMenuItems] = useState<DraftMenuItem[]>([{ ...EMPTY_ITEM }]);
 
+  const [consented, setConsented] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<{ vendorId: string; whatsappNumber: string } | null>(null);
@@ -63,6 +65,11 @@ export function AdminAddVendorScreen() {
 
     if (!businessName.trim() || !address.trim() || !contactPhone.trim()) {
       setError('Business name, address, and contact phone are required.');
+      return;
+    }
+
+    if (!consented) {
+      setError('Please confirm the vendor has agreed to the Privacy Notice.');
       return;
     }
 
@@ -282,6 +289,12 @@ export function AdminAddVendorScreen() {
             Add another item
           </Button>
         </section>
+
+        <PopiaNotice
+          checked={consented}
+          onChange={setConsented}
+          detail="this vendor's phone number, location, and banking details, on their behalf"
+        />
 
         {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 
