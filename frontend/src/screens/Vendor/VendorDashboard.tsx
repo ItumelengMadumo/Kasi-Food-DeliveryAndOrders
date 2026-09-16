@@ -794,13 +794,16 @@ function VendorOrderCard({
   onMarkPaid: (id: string) => void;
   updating: boolean;
 }) {
+  const navigate = useNavigate();
   const nextStatus = NEXT_STATUS[order.status];
   const isPaid = order.paymentStatus === 'PAID';
-  const isCashOrder =
-    order.paymentMethod === 'CASH_ON_DELIVERY' ||
-    order.paymentMethod === 'CASH_ON_PICKUP' ||
-    order.paymentMethod === 'EFT' ||
-    order.paymentMethod === 'PAYMENT_LINK';
+  const isSelfCertifiable =
+    order.paymentMethod === 'CASH_ON_DELIVERY' || order.paymentMethod === 'CASH_ON_PICKUP';
+  // EFT/payment-link orders now require a verified payment proof server-side
+  // before they can be marked paid — route to the proof review screen
+  // instead of calling a mutation the backend will reject.
+  const needsProofReview =
+    order.paymentMethod === 'EFT' || order.paymentMethod === 'PAYMENT_LINK';
 
   return (
     <div className="bg-white rounded-xl border border-stone-100 p-4">
@@ -868,7 +871,7 @@ function VendorOrderCard({
             Mark as {nextStatus.replace(/_/g, ' ')}
           </Button>
         )}
-        {isCashOrder && !isPaid && order.status !== 'CANCELLED' && (
+        {isSelfCertifiable && !isPaid && order.status !== 'CANCELLED' && (
           <Button
             size="sm"
             variant="secondary"
@@ -876,6 +879,15 @@ function VendorOrderCard({
             loading={updating}
           >
             Mark Paid
+          </Button>
+        )}
+        {needsProofReview && !isPaid && order.status !== 'CANCELLED' && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => navigate(`/vendor/whatsapp?vendorId=${order.vendorId}`)}
+          >
+            Review Proof to Mark Paid
           </Button>
         )}
         {order.status === 'PENDING' && (

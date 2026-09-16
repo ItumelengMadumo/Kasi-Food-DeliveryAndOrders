@@ -172,6 +172,26 @@ export class KasiStack extends Stack {
         });
         table.grantReadData(getNearbyVendorsFn);
 
+        // Gates markOrderPaid behind a verified PaymentProof for EFT/PAYMENT_LINK
+        // orders — a direct DDB resolver can only do one conditional UpdateItem,
+        // but this needs a check-then-update (query PaymentProof items first).
+        const markOrderPaidFn = new NodejsFunction(this, 'MarkOrderPaidFn', {
+            functionName: `kasi-mark-order-paid-${stage}`,
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(lambdaSrcRoot, 'markOrderPaid', 'index.js'),
+            projectRoot: lambdaProjectRoot,
+            handler: 'handler',
+            timeout: Duration.seconds(10),
+            environment: {
+                TABLE_NAME: table.tableName,
+            },
+            bundling: {
+                target: 'node20',
+                externalModules: ['@aws-sdk/*'],
+            },
+        });
+        table.grantReadWriteData(markOrderPaidFn);
+
         // Converts a pending VendorApplication into a live, login-free Vendor
         // record (vendorId is a fresh UUID, independent of any Cognito user) —
         // the core of the operator-driven onboarding flow.
@@ -497,6 +517,10 @@ export class KasiStack extends Stack {
             'GetNearbyVendorsSource',
             getNearbyVendorsFn
         );
+        const markOrderPaidSource = api.addLambdaDataSource(
+            'MarkOrderPaidSource',
+            markOrderPaidFn
+        );
         const initiatePaymentSource = api.addLambdaDataSource(
             'InitiatePaymentSource',
             initiatePaymentFn
@@ -548,8 +572,6 @@ export class KasiStack extends Stack {
             'Mutation.toggleMenuItemAvailability.js',
             ddbSource
         );
-        jsResolver('Mutation', 'markOrderPaid', 'Mutation.markOrderPaid.js', ddbSource);
-
         // ── Direct DDB resolvers (new files added for soft-launch) ───
         jsResolver('Query', 'getOrder', 'Query.getOrder.js', ddbSource);
         jsResolver('Query', 'getCustomerOrders', 'Query.getCustomerOrders.js', ddbSource);
@@ -638,6 +660,13 @@ export class KasiStack extends Stack {
             typeName: 'Query',
             fieldName: 'getNearbyVendors',
             dataSource: getNearbyVendorsSource,
+        });
+
+        new appsync.Resolver(this, 'Res-Mutation-markOrderPaid', {
+            api,
+            typeName: 'Mutation',
+            fieldName: 'markOrderPaid',
+            dataSource: markOrderPaidSource,
         });
 
         new appsync.Resolver(this, 'Res-Mutation-initiatePayment', {
