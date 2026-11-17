@@ -42,8 +42,8 @@ export function CheckoutScreen() {
   // Form state
   const [guestName, setGuestName] = useState(user?.name || '');
   const [guestPhone, setGuestPhone] = useState(user?.phone || '');
-  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('DELIVERY');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH_ON_DELIVERY');
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('PICKUP');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH_ON_PICKUP');
   const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>('PAYFAST');
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [addressText, setAddressText] = useState('');
@@ -199,19 +199,30 @@ export function CheckoutScreen() {
         <section className="bg-white rounded-xl border border-stone-100 p-4">
           <h2 className="font-semibold text-stone-800 mb-3">How would you like to receive it?</h2>
           <div className="grid grid-cols-2 gap-3">
-            {(['DELIVERY', 'PICKUP'] as DeliveryMethod[]).map((method) => (
-              <button
-                key={method}
-                onClick={() => setDeliveryMethod(method)}
-                className={`p-3 rounded-xl border-2 text-sm font-semibold transition-colors ${
-                  deliveryMethod === method
-                    ? 'border-kasi-orange bg-orange-50 text-kasi-orange'
-                    : 'border-stone-200 text-stone-600 hover:border-stone-300'
-                }`}
-              >
-                {method === 'DELIVERY' ? '🚚 Delivery' : '🏪 Pickup'}
-              </button>
-            ))}
+            {(['PICKUP', 'DELIVERY'] as DeliveryMethod[]).map((method) => {
+              const disabled = method === 'DELIVERY';
+              return (
+                <button
+                  key={method}
+                  disabled={disabled}
+                  onClick={() => !disabled && setDeliveryMethod(method)}
+                  className={`relative p-3 rounded-xl border-2 text-sm font-semibold transition-colors ${
+                    disabled
+                      ? 'border-stone-100 text-stone-400 cursor-not-allowed'
+                      : deliveryMethod === method
+                        ? 'border-kasi-orange bg-orange-50 text-kasi-orange'
+                        : 'border-stone-200 text-stone-600 hover:border-stone-300'
+                  }`}
+                >
+                  {method === 'DELIVERY' ? '🚚 Delivery' : '🏪 Pickup'}
+                  {disabled && (
+                    <span className="absolute top-1 right-1 text-[9px] font-bold uppercase tracking-wide bg-stone-200 text-stone-500 px-1.5 py-0.5 rounded">
+                      Coming soon
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </section>
 
