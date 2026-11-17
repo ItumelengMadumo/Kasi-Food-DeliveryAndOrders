@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShoppingCart, Home, Package, User, LogOut, Store } from 'lucide-react';
+import { ShoppingCart, Home, Package, User, LogOut, Store, Menu, X } from 'lucide-react';
 import { useAuthStore } from '../state/authStore';
 import { useCartStore } from '../state/cartStore';
 import { clsx } from 'clsx';
@@ -10,6 +11,7 @@ export function Navbar() {
   const totalItems = useCartStore((s) => s.totalItems());
   const navigate = useNavigate();
   const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isVendorUser = user?.role === 'VENDOR';
   const isAdminUser = user?.role === 'ADMIN';
   const dashboardTarget = isVendorUser ? '/vendor/dashboard' : isAdminUser ? '/admin' : '/';
@@ -41,7 +43,7 @@ export function Navbar() {
         <nav
           className={clsx(
             'items-center text-sm font-medium',
-            isPublicMarketingRoute ? 'flex gap-4 sm:gap-6 text-xs sm:text-sm' : 'hidden md:flex gap-6'
+            isPublicMarketingRoute ? 'hidden sm:flex gap-4 sm:gap-6 text-xs sm:text-sm' : 'hidden md:flex gap-6'
           )}
         >
           {isPublicMarketingRoute ? (
@@ -90,6 +92,18 @@ export function Navbar() {
 
         {/* Right section */}
         <div className="flex items-center gap-3">
+          {/* Mobile menu toggle (public marketing routes only) */}
+          {isPublicMarketingRoute && (
+            <button
+              onClick={() => setMobileMenuOpen((open) => !open)}
+              className="sm:hidden p-2 text-stone-700 hover:text-kasi-orange transition-colors"
+              aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
+          )}
+
           {/* Cart */}
           {!isVendorUser && !isAdminUser && !isPublicMarketingRoute && (
             <Link
@@ -123,20 +137,47 @@ export function Navbar() {
           ) : (
             <Link
               to={isPublicMarketingRoute ? '/auth?mode=login&role=vendor' : '/orders'}
-              className="text-sm font-semibold text-kasi-orange hover:underline"
+              className={clsx(
+                'text-sm font-semibold text-kasi-orange hover:underline',
+                isPublicMarketingRoute && 'hidden sm:inline'
+              )}
             >
               {user?.isGuest ? `Hi, ${user.name}` : isPublicMarketingRoute ? 'Sign In' : 'My Orders'}
             </Link>
           )}
         </div>
       </div>
+
+      {/* Mobile menu panel */}
+      {isPublicMarketingRoute && mobileMenuOpen && (
+        <nav className="sm:hidden border-t border-stone-200 bg-white px-4 py-3 flex flex-col gap-3 text-sm font-medium">
+          <PublicAnchor href={`${publicAnchorPrefix}#about`} label="About" onClick={() => setMobileMenuOpen(false)} />
+          <PublicAnchor href={`${publicAnchorPrefix}#pricing`} label="Pricing" onClick={() => setMobileMenuOpen(false)} />
+          <PublicAnchor href={`${publicAnchorPrefix}#contact`} label="Contact Us" onClick={() => setMobileMenuOpen(false)} />
+          <Link
+            to="/auth?mode=login&role=vendor"
+            onClick={() => setMobileMenuOpen(false)}
+            className="font-semibold text-kasi-orange"
+          >
+            Sign In
+          </Link>
+        </nav>
+      )}
     </header>
   );
 }
 
-function PublicAnchor({ href, label }: { href: string; label: string }) {
+function PublicAnchor({
+  href,
+  label,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  onClick?: () => void;
+}) {
   return (
-    <a href={href} className="text-stone-600 transition-colors hover:text-stone-900">
+    <a href={href} onClick={onClick} className="text-stone-600 transition-colors hover:text-stone-900">
       {label}
     </a>
   );
