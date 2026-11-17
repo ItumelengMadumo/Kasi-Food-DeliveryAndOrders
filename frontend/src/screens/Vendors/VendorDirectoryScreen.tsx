@@ -27,33 +27,17 @@ export function VendorDirectoryScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    async function load() {
+
+    // Render whatever vendors we have immediately instead of blocking the
+    // whole screen on the browser's location prompt/GPS fix, which can take
+    // several seconds (or hang until it times out). Location, once it
+    // resolves, only re-sorts what's already on screen.
+    async function loadVendors() {
       setLoading(true);
       setError('');
       try {
-        const position = await getCurrentPosition();
-        if (cancelled) return;
-
-        if (position) {
-          setUserLocation(position);
-          const nearby = await getNearbyVendors(position.lat, position.lng, NEARBY_RADIUS_KM);
-          if (cancelled) return;
-          if (nearby.length > 0) {
-            setVendors(nearby);
-          } else {
-            // Most vendors don't have a saved map pin yet, so the radius
-            // filter above can legitimately come back empty even though
-            // approved vendors exist — fall back to showing everyone rather
-            // than a dead "no spots" screen. Distance just won't be known
-            // for unpinned vendors (handled by distanceFor/sort already).
-            const all = await getAllVendors('APPROVED');
-            if (!cancelled) setVendors(all);
-          }
-        } else {
-          setLocationDenied(true);
-          const all = await getAllVendors('APPROVED');
-          if (!cancelled) setVendors(all);
-        }
+        const all = await getAllVendors('APPROVED');
+        if (!cancelled) setVendors(all);
       } catch (err) {
         console.error('Failed to load vendors:', err);
         if (!cancelled) setError('Could not load vendors right now. Please try again in a moment.');
@@ -61,7 +45,31 @@ export function VendorDirectoryScreen() {
         if (!cancelled) setLoading(false);
       }
     }
-    void load();
+
+    async function loadLocation() {
+      const position = await getCurrentPosition(3000);
+      if (cancelled) return;
+
+      if (!position) {
+        setLocationDenied(true);
+        return;
+      }
+
+      setUserLocation(position);
+      try {
+        const nearby = await getNearbyVendors(position.lat, position.lng, NEARBY_RADIUS_KM);
+        if (cancelled) return;
+        // Most vendors don't have a saved map pin yet, so the radius filter
+        // can legitimately come back empty even though approved vendors
+        // exist — keep showing the full list rather than a dead screen.
+        if (nearby.length > 0) setVendors(nearby);
+      } catch (err) {
+        console.error('Failed to load nearby vendors:', err);
+      }
+    }
+
+    void loadVendors();
+    void loadLocation();
     return () => {
       cancelled = true;
     };
