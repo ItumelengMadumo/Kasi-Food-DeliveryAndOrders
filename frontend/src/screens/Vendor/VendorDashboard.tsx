@@ -276,32 +276,17 @@ export function VendorDashboard() {
 
   // ── Simulated WhatsApp order ──────────────────────────────────────────
 
+  // Simulated orders are a preview of the WhatsApp ordering flow only — they
+  // must never touch `orders`, since that drives every stat/count on this
+  // dashboard (Active Orders, Today's Orders, Revenue, etc).
   function handleSimulatedOrder(sim: {
     orderId: string;
     customerName: string;
     paymentMethod: 'CASH_ON_PICKUP' | 'EFT' | 'CASH_ON_DELIVERY';
     total: number;
   }) {
-    const now = new Date().toISOString();
-    const simulatedOrder: Order = {
-      id: `sim-${sim.orderId}`,
-      vendorId,
-      guestDetails: { name: sim.customerName, phone: 'simulated' },
-      status: 'PENDING',
-      deliveryMethod: sim.paymentMethod === 'CASH_ON_DELIVERY' ? 'DELIVERY' : 'PICKUP',
-      deliveryFee: 0,
-      subtotal: sim.total,
-      totalAmount: sim.total,
-      paymentMethod: sim.paymentMethod,
-      paymentStatus: 'PENDING',
-      contactPhone: 'simulated',
-      source: 'WHATSAPP' as OrderSource,
-      createdAt: now,
-      updatedAt: now,
-    };
-    setOrders((prev) => [simulatedOrder, ...prev]);
     setNewOrderAlert(
-      `Simulated WhatsApp order from ${sim.customerName} • R${sim.total.toFixed(2)} 🧪`
+      `Simulated WhatsApp order from ${sim.customerName} • R${sim.total.toFixed(2)} 🧪 (preview only — not saved)`
     );
     setTimeout(() => setNewOrderAlert(null), 8000);
   }
