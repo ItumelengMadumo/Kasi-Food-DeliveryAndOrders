@@ -1,25 +1,38 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, XCircle, Clock, Users, ShoppingBag, Store, UserPlus, Settings } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Users, ShoppingBag, Store, UserPlus, Settings, MapPin, MessageCircle } from 'lucide-react';
 import {
   getPendingVendorApplications,
   approveVendor,
   rejectVendor,
   getAllOrders,
   getAllVendors,
+  getSpotRequests,
+  updateSpotRequestStatus,
 } from '../../services/api';
 import { LoadingSpinner } from '../../components/ui/Card';
 import { OrderStatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
-import type { VendorApplication, Order, Vendor } from '../../types';
+import type { VendorApplication, Order, Vendor, SpotRequest, SpotRequestStatus } from '../../types';
 import { displayOrderNumber } from '../../domain/orderNumber';
+
+const SPOT_REQUEST_STATUS_FLOW: SpotRequestStatus[] = [
+  'NEW',
+  'CONTACTED',
+  'ONBOARDING',
+  'LIVE',
+  'DECLINED',
+];
 
 export function AdminDashboard() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<'overview' | 'vendors' | 'applications' | 'orders'>('overview');
+  const [tab, setTab] = useState<'overview' | 'vendors' | 'applications' | 'orders' | 'spotRequests'>(
+    'overview'
+  );
   const [applications, setApplications] = useState<VendorApplication[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [spotRequests, setSpotRequests] = useState<SpotRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
@@ -31,20 +44,37 @@ export function AdminDashboard() {
   async function loadData() {
     setLoading(true);
     try {
-      const [apps, ords, vends] = await Promise.all([
+      const [apps, ords, vends, spotReqs] = await Promise.all([
         getPendingVendorApplications(),
         getAllOrders(),
         getAllVendors(),
+        getSpotRequests().catch((err) => {
+          console.error('Failed to load spot requests:', err);
+          return [];
+        }),
       ]);
       setApplications(apps);
       setOrders(ords);
       setVendors(vends);
+      setSpotRequests(spotReqs);
     } catch {
       // Demo data
       setApplications(DEMO_APPLICATIONS);
       setOrders(DEMO_ORDERS);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSpotRequestStatus(id: string, status: SpotRequestStatus) {
+    setProcessingId(id);
+    try {
+      await updateSpotRequestStatus(id, status);
+      setSpotRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
+    } catch (err) {
+      console.error('Failed to update spot request status:', err);
+    } finally {
+      setProcessingId(null);
     }
   }
 
@@ -124,6 +154,11 @@ export function AdminDashboard() {
         <TabButton label={`Vendors (${vendors.length})`} active={tab === 'vendors'} onClick={() => setTab('vendors')} />
         <TabButton label={`Applications (${pendingApps.length})`} active={tab === 'applications'} onClick={() => setTab('applications')} />
         <TabButton label={`All Orders (${orders.length})`} active={tab === 'orders'} onClick={() => setTab('orders')} />
+        <TabButton
+          label={`Spot Requests (${spotRequests.length})`}
+          active={tab === 'spotRequests'}
+          onClick={() => setTab('spotRequests')}
+        />
       </div>
 
       {loading ? (
@@ -268,6 +303,28 @@ export function AdminDashboard() {
                 onApprove={() => handleApprove(app.id)}
                 onReject={() => handleReject(app.id)}
                 processing={processingId === app.id}
+              />
+            ))
+          )}
+        </div>
+      ) : tab === 'spotRequests' ? (
+        <div className="space-y-3">
+          <section className="bg-white rounded-xl border border-stone-100 p-4">
+            <h3 className="font-semibold text-stone-900">Spot Requests</h3>
+            <p className="mt-1 text-sm text-stone-500">
+              Customers tell us which vendors to sign up — each request is proof of demand.
+            </p>
+          </section>
+
+          {spotRequests.length === 0 ? (
+            <p className="text-center text-stone-400 py-8">No spot requests yet.</p>
+          ) : (
+            spotRequests.map((req) => (
+              <SpotRequestRow
+                key={req.id}
+                request={req}
+                processing={processingId === req.id}
+                onAdvance={(status) => handleSpotRequestStatus(req.id, status)}
               />
             ))
           )}
@@ -499,6 +556,77 @@ function AdminOrderRow({ order }: { order: Order }) {
       <div className="flex flex-col items-end gap-1">
         <OrderStatusBadge status={order.status} />
         <span className="font-bold text-kasi-orange text-sm">R{order.totalAmount.toFixed(2)}</span>
+      </div>
+    </div>
+  );
+}
+
+function SpotRequestRow({
+  request,
+  processing,
+  onAdvance,
+}: {
+  request: SpotRequest;
+  processing: boolean;
+  onAdvance: (status: SpotRequestStatus) => void;
+}) {
+  const currentIndex = SPOT_REQUEST_STATUS_FLOW.indexOf(request.status);
+  const nextStatus =
+    currentIndex >= 0 && currentIndex < SPOT_REQUEST_STATUS_FLOW.length - 2
+      ? SPOT_REQUEST_STATUS_FLOW[currentIndex + 1]
+      : null;
+
+  const statusColors: Record<SpotRequestStatus, string> = {
+    NEW: 'bg-yellow-100 text-yellow-700',
+    CONTACTED: 'bg-blue-100 text-blue-700',
+    ONBOARDING: 'bg-orange-100 text-orange-700',
+    LIVE: 'bg-green-100 text-green-700',
+    DECLINED: 'bg-stone-200 text-stone-600',
+  };
+
+  const waText = encodeURIComponent(
+    `Hi! A customer asked us to bring ${request.name} onto Kasi Eats. Would you like to join?`
+  );
+  const waLink = request.ownerPhone
+    ? `https://wa.me/${request.ownerPhone.replace(/\D/g, '')}?text=${waText}`
+    : null;
+
+  return (
+    <div className="bg-white rounded-xl border border-stone-100 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="font-semibold text-stone-900">{request.name}</div>
+          <div className="text-xs text-stone-500 mt-0.5 flex items-center gap-1">
+            <MapPin size={12} />
+            {request.areaText || (request.location ? 'Pinned location' : 'No location given')}
+            {request.category ? ` • ${request.category}` : ''}
+          </div>
+          <div className="text-xs text-stone-400 mt-0.5">Requested by {request.requesterPhone}</div>
+        </div>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColors[request.status]}`}>
+          {request.status}
+        </span>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {waLink && (
+          <a href={waLink} target="_blank" rel="noopener noreferrer">
+            <Button size="sm" variant="secondary">
+              <MessageCircle size={14} className="mr-1.5" />
+              WhatsApp owner
+            </Button>
+          </a>
+        )}
+        {nextStatus && (
+          <Button size="sm" loading={processing} onClick={() => onAdvance(nextStatus)}>
+            Mark {nextStatus}
+          </Button>
+        )}
+        {request.status !== 'DECLINED' && request.status !== 'LIVE' && (
+          <Button size="sm" variant="danger" loading={processing} onClick={() => onAdvance('DECLINED')}>
+            Decline
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -41,6 +41,8 @@ export function response(ctx) {
     contactDetails: item.contactDetails,
     status: item.status,
     deliveryType: item.deliveryType,
+    deliveryRadiusKm: item.deliveryRadiusKm,
+    categories: item.categories,
     deliveryValue: item.deliveryValue,
     hasBankAccount: true,
     whatsappNumber: item.whatsappNumber,

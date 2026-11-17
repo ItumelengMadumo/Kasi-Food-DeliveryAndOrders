@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import {
   ArrowRight,
@@ -6,125 +7,212 @@ import {
   Clock3,
   CreditCard,
   MessageCircle,
+  Search,
   Store,
   TrendingUp,
+  Truck,
+  Utensils,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { RequestSpotForm } from '../../components/RequestSpotForm';
+import { VendorCard } from '../../components/VendorCard';
+import { VendorMap } from '../../components/VendorMap';
+import { LoadingSpinner } from '../../components/ui/Card';
+import { getAllVendors, getNearbyVendors } from '../../services/api';
+import { getCurrentPosition, distanceKm, type Coordinates } from '../../domain/distance';
+import type { Vendor } from '../../types';
+
+type HowItWorksTab = 'hungry' | 'sell';
 
 export function HomeScreen() {
+  const navigate = useNavigate();
+  const [areaText, setAreaText] = useState('');
+  const [tab, setTab] = useState<HowItWorksTab>('hungry');
+  const [nearby, setNearby] = useState<Vendor[]>([]);
+  const [nearbyLoading, setNearbyLoading] = useState(true);
+  const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
+  const [vendorCount, setVendorCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const all = await getAllVendors('APPROVED');
+        if (cancelled) return;
+        setVendorCount(all.length);
+
+        const position = await getCurrentPosition();
+        if (cancelled) return;
+        if (position) {
+          setUserLocation(position);
+          const near = await getNearbyVendors(position.lat, position.lng, 15);
+          if (cancelled) return;
+          // Most vendors don't have a saved map pin yet, so this can come
+          // back empty even with approved vendors — fall back to showing
+          // some rather than a dead "no spots" card.
+          setNearby(near.length > 0 ? near.slice(0, 6) : all.slice(0, 6));
+        } else {
+          setNearby(all.slice(0, 6));
+        }
+      } catch (err) {
+        console.error('Failed to load homepage vendors:', err);
+      } finally {
+        if (!cancelled) setNearbyLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleSeeFoodNearMe() {
+    navigate('/vendors');
+  }
+
+  const distanceFor = (vendor: Vendor): number | undefined =>
+    userLocation && vendor.location ? distanceKm(userLocation, vendor.location) : undefined;
+
   return (
     <main className="overflow-hidden pb-24 md:pb-0">
+      {/* ── Hero (customers first) ──────────────────── */}
       <section className="relative isolate border-b border-stone-200 bg-stone-950 text-stone-50">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.35),_transparent_32%),radial-gradient(circle_at_80%_20%,_rgba(251,191,36,0.2),_transparent_24%),linear-gradient(135deg,_#0c0a09_0%,_#1c1917_55%,_#292524_100%)]" />
         <div className="absolute -left-24 top-16 h-64 w-64 rounded-full bg-orange-500/20 blur-3xl" />
         <div className="absolute right-0 top-0 h-72 w-72 rounded-full bg-amber-300/10 blur-3xl" />
 
-        <div className="relative mx-auto grid max-w-6xl gap-12 px-4 py-14 md:grid-cols-[1.15fr_0.85fr] md:px-6 md:py-20">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-orange-200">
-              <BadgeCheck size={14} />
-              Built for township food businesses
-            </div>
-
-            <h1 className="mt-6 max-w-3xl text-4xl font-black leading-tight text-white md:text-6xl">
-              Turn your kitchen into a
-              <span className="block text-orange-400">daily ordering business</span>
-            </h1>
-
-            <p className="mt-5 max-w-2xl text-base leading-7 text-stone-300 md:text-lg">
-              Kasi Eats helps local vendors take orders, manage delivery or pickup,
-              get paid, and stay visible to nearby customers without needing a full
-              storefront or complicated setup.
-            </p>
-
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link to="/vendors">
-                <Button size="lg" className="w-full rounded-full px-7 sm:w-auto">
-                  Order Food Now
-                  <ArrowRight size={18} className="ml-2" />
-                </Button>
-              </Link>
-              <Link to="/auth?mode=register&role=vendor">
-                <Button
-                  variant="ghost"
-                  size="lg"
-                  className="w-full rounded-full border border-white/20 bg-white/5 px-7 text-white hover:bg-white/10 sm:w-auto"
-                >
-                  Register as a Vendor
-                </Button>
-              </Link>
-            </div>
-
-            <div className="mt-8 grid gap-4 text-sm text-stone-300 sm:grid-cols-3">
-              {HERO_STATS.map((stat) => (
-                <div key={stat.label} className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
-                  <div className="text-2xl font-black text-white">{stat.value}</div>
-                  <div className="mt-1 text-xs uppercase tracking-[0.2em] text-stone-400">{stat.label}</div>
-                </div>
-              ))}
-            </div>
+        <div className="relative mx-auto max-w-4xl px-4 py-16 text-center md:px-6 md:py-24">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-orange-200">
+            <BadgeCheck size={14} />
+            Local kota spots, braai stands and kitchens
           </div>
 
-          <div className="relative">
-            <div className="absolute -right-6 -top-6 h-28 w-28 rounded-full border border-orange-300/20 bg-orange-400/10 blur-2xl" />
-            <div className="relative rounded-[28px] border border-white/10 bg-white/95 p-5 text-stone-900 shadow-2xl shadow-black/30">
-              <div className="flex items-center justify-between border-b border-stone-200 pb-4">
-                <div>
-                  <p className="text-sm font-semibold text-stone-500">Vendor Snapshot</p>
-                  <h2 className="text-xl font-bold text-stone-950">Mama Thandi's Kitchen</h2>
-                </div>
-                <div className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-                  Open for orders
-                </div>
-              </div>
+          <h1 className="mt-6 text-4xl font-black leading-tight text-white md:text-6xl">
+            Kasi food, delivered to your door.
+          </h1>
 
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                {DASHBOARD_CARDS.map((card) => (
-                  <div key={card.title} className="rounded-2xl bg-stone-100 p-4">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-stone-600">
-                      <card.icon size={16} className="text-kasi-orange" />
-                      {card.title}
-                    </div>
-                    <div className="mt-2 text-2xl font-black text-stone-950">{card.value}</div>
-                    <p className="mt-1 text-sm text-stone-500">{card.description}</p>
-                  </div>
-                ))}
-              </div>
+          <p className="mt-5 text-base leading-7 text-stone-300 md:text-lg">
+            Order from the food spots in your area. We pick it up and bring it to you.
+          </p>
 
-              <div className="mt-5 rounded-2xl bg-stone-950 p-5 text-white">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-stone-400">Live order flow</p>
-                    <h3 className="mt-1 text-lg font-bold">WhatsApp to dashboard</h3>
-                  </div>
-                  <MessageCircle size={20} className="text-orange-400" />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSeeFoodNearMe();
+            }}
+            className="mx-auto mt-8 flex max-w-xl flex-col gap-2 rounded-2xl bg-white/95 p-2 shadow-xl sm:flex-row"
+          >
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+              <input
+                type="text"
+                value={areaText}
+                onChange={(e) => setAreaText(e.target.value)}
+                placeholder="Type your area or section"
+                className="w-full rounded-xl py-2.5 pl-9 pr-3 text-stone-900 focus:outline-none"
+              />
+            </div>
+            <Button type="submit" size="lg" className="rounded-xl">
+              See food near me
+              <ArrowRight size={18} className="ml-2" />
+            </Button>
+          </form>
+
+          <Link
+            to="/vendor/apply"
+            className="mt-4 inline-block text-sm font-semibold text-orange-300 hover:text-orange-200"
+          >
+            Sell food? Get your spot on Kasi Eats →
+          </Link>
+        </div>
+      </section>
+
+      {/* ── Food near you (map + list) ──────────────── */}
+      <section className="mx-auto max-w-6xl px-4 py-14 md:px-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-kasi-orange">
+              Food near you
+            </p>
+            <h2 className="mt-2 text-2xl font-black text-stone-950 md:text-3xl">
+              Spots ready to take your order
+            </h2>
+          </div>
+          <Link to="/vendors" className="text-sm font-semibold text-kasi-orange hover:underline">
+            See all →
+          </Link>
+        </div>
+
+        <div className="mt-6">
+          {nearbyLoading ? (
+            <LoadingSpinner className="py-12" />
+          ) : (
+            <>
+              <VendorMap vendors={nearby} userLocation={userLocation} distanceFor={distanceFor} />
+              {nearby.length === 0 ? (
+                <div className="mt-6 rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-8 text-center text-stone-500">
+                  No spots near you yet. Tell us your favourite and we'll bring them on.
                 </div>
-                <div className="mt-4 space-y-3">
-                  {LIVE_FLOW.map((step) => (
-                    <div key={step.title} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
-                      <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-orange-400 font-bold text-stone-950">
-                        {step.number}
-                      </div>
-                      <div>
-                        <div className="font-semibold">{step.title}</div>
-                        <div className="text-sm text-stone-300">{step.description}</div>
-                      </div>
-                    </div>
+              ) : (
+                <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {nearby.map((vendor) => (
+                    <VendorCard key={vendor.id} vendor={vendor} distanceKm={distanceFor(vendor)} />
                   ))}
                 </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <RequestSpotForm className="mx-auto mt-10 max-w-md rounded-xl border border-stone-200 bg-white p-4" />
+      </section>
+
+      {/* ── How it works ─────────────────────────────── */}
+      <section className="border-y border-stone-200 bg-stone-100/70">
+        <div className="mx-auto max-w-4xl px-4 py-14 md:px-6">
+          <h2 className="text-center text-2xl font-black text-stone-950 md:text-3xl">
+            How it works
+          </h2>
+
+          <div className="mt-6 flex justify-center gap-2">
+            {HOW_IT_WORKS_TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={clsx(
+                  'flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors',
+                  tab === t.key
+                    ? 'border-kasi-orange bg-kasi-orange text-white'
+                    : 'border-stone-200 bg-white text-stone-600 hover:border-kasi-orange/50'
+                )}
+              >
+                <t.icon size={16} />
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            {HOW_IT_WORKS_TABS.find((t) => t.key === tab)?.steps.map((step, i) => (
+              <div key={step} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 font-bold text-kasi-orange">
+                  {i + 1}
+                </div>
+                <p className="mt-3 text-sm font-semibold text-stone-800">{step}</p>
               </div>
-            </div>
+            ))}
           </div>
         </div>
       </section>
 
+      {/* ── For vendors ──────────────────────────────── */}
       <section id="about" className="mx-auto max-w-6xl scroll-mt-28 px-4 py-14 md:px-6">
         <div className="max-w-2xl">
           <p className="text-sm font-semibold uppercase tracking-[0.22em] text-kasi-orange">
-            Why vendors join
+            For vendors
           </p>
           <h2 className="mt-3 text-3xl font-black text-stone-950 md:text-4xl">
-            Simple tools for selling more, responding faster, and staying organised
+            Your kitchen, on every phone in the area
           </h2>
         </div>
 
@@ -214,6 +302,30 @@ export function HomeScreen() {
         </div>
       </section>
 
+      {/* ── Trust strip ──────────────────────────────── */}
+      <section className="border-t border-stone-200 bg-white">
+        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-4 py-10 text-center md:grid-cols-4 md:px-6">
+          <div>
+            <div className="text-2xl font-black text-stone-950">
+              {vendorCount !== null ? vendorCount : '—'}
+            </div>
+            <div className="mt-1 text-xs uppercase tracking-[0.2em] text-stone-500">Live vendors</div>
+          </div>
+          <div>
+            <div className="text-2xl font-black text-stone-950">Soweto & nearby</div>
+            <div className="mt-1 text-xs uppercase tracking-[0.2em] text-stone-500">Areas covered</div>
+          </div>
+          <div>
+            <div className="text-2xl font-black text-stone-950">08:00–20:00</div>
+            <div className="mt-1 text-xs uppercase tracking-[0.2em] text-stone-500">Delivery hours</div>
+          </div>
+          <div>
+            <div className="text-2xl font-black text-stone-950">{CONTACT_OPTIONS[1].value}</div>
+            <div className="mt-1 text-xs uppercase tracking-[0.2em] text-stone-500">Support WhatsApp</div>
+          </div>
+        </div>
+      </section>
+
       <section id="contact" className="border-t border-stone-200 bg-stone-950 text-stone-50 scroll-mt-28">
         <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 md:grid-cols-[1.1fr_0.9fr] md:px-6">
           <div>
@@ -297,76 +409,60 @@ export function HomeScreen() {
           </div>
         </div>
       </section>
+
+      {/* ── Footer ───────────────────────────────────── */}
+      <footer className="border-t border-stone-200 bg-stone-50 px-4 py-10 md:px-6">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-stone-500">
+          <a href="#about" className="hover:text-kasi-orange">About</a>
+          <a href="#contact" className="hover:text-kasi-orange">Contact</a>
+          <Link to="/auth?mode=login&role=vendor" className="hover:text-kasi-orange">Vendor login</Link>
+          <span className="cursor-default text-stone-400" title="Not published yet">
+            Terms (coming soon)
+          </span>
+          <span className="cursor-default text-stone-400" title="Not published yet">
+            Privacy / POPIA (coming soon)
+          </span>
+        </div>
+      </footer>
     </main>
   );
 }
 
-const HERO_STATS = [
-  { value: '1 place', label: 'To manage orders' },
-  { value: '24/7', label: 'Business visibility' },
-  { value: 'Fast', label: 'Vendor onboarding' },
-];
-
-const DASHBOARD_CARDS = [
+const HOW_IT_WORKS_TABS: {
+  key: HowItWorksTab;
+  label: string;
+  icon: typeof Utensils;
+  steps: string[];
+}[] = [
   {
-    title: 'Orders Today',
-    value: '18',
-    description: 'Track new, preparing, and completed orders in one flow.',
+    key: 'hungry',
+    label: "I'm hungry",
+    icon: Utensils,
+    steps: ['Find a spot near you', 'Order on the site or WhatsApp', 'We deliver, or you collect'],
+  },
+  {
+    key: 'sell',
+    label: 'I sell food',
     icon: Store,
-  },
-  {
-    title: 'Repeat Customers',
-    value: '62%',
-    description: 'Stay visible and easy to reorder from nearby communities.',
-    icon: TrendingUp,
-  },
-  {
-    title: 'Average Prep Time',
-    value: '22m',
-    description: 'Set expectations clearly for delivery and pickup orders.',
-    icon: Clock3,
-  },
-  {
-    title: 'Payment Options',
-    value: '3',
-    description: 'Cash, pickup, and digital-friendly ordering support.',
-    icon: CreditCard,
-  },
-];
-
-const LIVE_FLOW = [
-  {
-    number: '1',
-    title: 'Customers discover your shop',
-    description: 'Your menu, contact details, and delivery setup stay visible online.',
-  },
-  {
-    number: '2',
-    title: 'Orders reach you instantly',
-    description: 'Incoming orders can be tracked through the dashboard and WhatsApp flow.',
-  },
-  {
-    number: '3',
-    title: 'You fulfill with less admin',
-    description: 'Update order status, manage availability, and keep service moving.',
+    steps: ['Register free', 'Put your menu up', 'Get orders and new customers — we handle delivery'],
   },
 ];
 
 const BENEFITS = [
   {
-    title: 'More Local Reach',
+    title: 'Get found on the map',
     description: 'Put your business in front of nearby customers who are already looking for food options.',
     icon: TrendingUp,
   },
   {
-    title: 'Simple Order Management',
+    title: 'Take orders on WhatsApp and online',
     description: 'View new orders, update status, and manage your menu without juggling multiple tools.',
     icon: Store,
   },
   {
-    title: 'Flexible Payment Support',
+    title: 'We deliver, you cook',
     description: 'Support cash on delivery, cash on pickup, and digital flows depending on how you operate.',
-    icon: CreditCard,
+    icon: Truck,
   },
   {
     title: 'WhatsApp-Friendly Workflows',
@@ -386,7 +482,7 @@ const PLATFORM_FEATURES = [
   },
   {
     title: 'Vendor settings that match real operations',
-    description: 'Set contact details, WhatsApp number, delivery fees, and business information from one place.',
+    description: 'Set contact details, WhatsApp number, delivery fees, hours, and business information from one place.',
   },
   {
     title: 'Built for growth, not only setup',
@@ -399,8 +495,8 @@ const PRICING_CARDS = [
     eyebrow: 'Starter',
     title: 'Apply and Launch',
     description: 'Best for new vendors getting their business visible and ready to receive orders.',
-    price: 'Apply Free',
-    priceNote: 'Start with onboarding and vendor approval.',
+    price: 'R0/mo',
+    priceNote: 'Free to apply. Start with onboarding and vendor approval.',
     points: [
       'Business profile and vendor onboarding',
       'Menu listing and availability controls',
@@ -412,8 +508,8 @@ const PRICING_CARDS = [
     eyebrow: 'Core Plan',
     title: 'Commission-Based',
     description: 'Designed for vendors using the platform to manage regular orders and visibility.',
-    price: 'Per Order',
-    priceNote: 'A platform fee applies as orders come in.',
+    price: '10% per order (indicative)',
+    priceNote: 'A commission applies per order — final rate TBC.',
     points: [
       'Order tracking and vendor dashboard analytics',
       'Customer-ready menu and pricing management',
@@ -425,8 +521,8 @@ const PRICING_CARDS = [
     eyebrow: 'Flexible',
     title: 'Cash-Friendly Support',
     description: 'Built for businesses that still rely on delivery cash flow or pickup-first operations.',
-    price: 'Admin Fee Model',
-    priceNote: 'Useful when digital payout flows are not yet fully set up.',
+    price: 'R5 per order (indicative)',
+    priceNote: 'A flat admin fee instead of commission, for vendors without a linked bank account — useful when digital payout flows are not yet fully set up.',
     points: [
       'Cash on delivery or pickup support',
       'Operational flexibility while growing',

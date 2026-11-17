@@ -66,6 +66,8 @@ exports.handler = async (event) => {
       workingHours: item.workingHours,
       status: item.status,
       deliveryType: item.deliveryType,
+      deliveryRadiusKm: item.deliveryRadiusKm,
+      categories: item.categories,
       deliveryValue: item.deliveryValue,
       hasBankAccount: item.hasBankAccount === true,
       digitalPaymentsEnabled: item.digitalPaymentsEnabled === true,

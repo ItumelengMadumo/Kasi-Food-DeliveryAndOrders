@@ -17,6 +17,9 @@ import type {
   BankDetails,
   PaymentProof,
   PaymentProofStatus,
+  WorkingHours,
+  SpotRequest,
+  SpotRequestStatus,
 } from '../types';
 
 // Lazy singleton — generateClient() requires Amplify.configure() to have run first.
@@ -36,7 +39,7 @@ export async function getVendor(vendorId: string): Promise<Vendor | null> {
     query GetVendor($vendorId: ID!) {
       getVendor(vendorId: $vendorId) {
         id ownerId name address contactDetails workingHours
-        status deliveryType deliveryValue hasBankAccount digitalPaymentsEnabled whatsappNumber refPrefix
+        status deliveryType deliveryValue deliveryRadiusKm categories hasBankAccount digitalPaymentsEnabled whatsappNumber refPrefix
         imageUrl description rating totalReviews createdAt
         location { lat lng }
       }
@@ -51,7 +54,7 @@ export async function getAllVendors(status?: VendorStatus): Promise<Vendor[]> {
     query GetAllVendors($status: VendorStatus) {
       getAllVendors(status: $status) {
         id ownerId name address contactDetails status
-        deliveryType deliveryValue hasBankAccount digitalPaymentsEnabled whatsappNumber
+        deliveryType deliveryValue deliveryRadiusKm categories hasBankAccount digitalPaymentsEnabled whatsappNumber
         imageUrl description rating totalReviews createdAt
         location { lat lng }
       }
@@ -69,7 +72,7 @@ export async function getNearbyVendors(
   const query = /* GraphQL */ `
     query GetNearbyVendors($location: LocationInput!, $radiusKm: Float) {
       getNearbyVendors(location: $location, radiusKm: $radiusKm) {
-        id name address status deliveryType deliveryValue hasBankAccount digitalPaymentsEnabled
+        id name address status deliveryType deliveryValue deliveryRadiusKm categories hasBankAccount digitalPaymentsEnabled
         whatsappNumber contactDetails imageUrl description rating totalReviews createdAt
         location { lat lng }
       }
@@ -106,6 +109,7 @@ export async function getOrder(orderId: string): Promise<Order | null> {
         subtotal totalAmount paymentMethod paymentStatus paymentProvider contactPhone specialInstructions
         createdAt updatedAt
         guestDetails { name phone }
+        deliveryAddress { text landmark lat lng }
         items { id menuItemId name price quantity }
       }
     }
@@ -121,6 +125,7 @@ export async function getCustomerOrders(customerId: string): Promise<Order[]> {
         id orderNumber paymentRef vendorId status deliveryMethod totalAmount paymentMethod paymentStatus
         contactPhone createdAt updatedAt
         guestDetails { name phone }
+        deliveryAddress { text landmark lat lng }
       }
     }
   `;
@@ -138,6 +143,7 @@ export async function getVendorOrders(
         id orderNumber paymentRef customerId vendorId status deliveryMethod deliveryFee
         subtotal totalAmount paymentMethod paymentStatus contactPhone createdAt updatedAt
         guestDetails { name phone }
+        deliveryAddress { text landmark lat lng }
         items { id menuItemId name price quantity }
       }
     }
@@ -160,6 +166,7 @@ export interface CreateOrderInput {
   paymentMethod: string;
   contactPhone: string;
   specialInstructions?: string;
+  deliveryAddress?: { text: string; landmark?: string; lat?: number; lng?: number };
   items: { menuItemId: string; name: string; price: number; quantity: number }[];
 }
 
@@ -170,6 +177,7 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
         id orderNumber paymentRef vendorId status deliveryMethod deliveryFee
         subtotal totalAmount paymentMethod contactPhone createdAt updatedAt
         guestDetails { name phone }
+        deliveryAddress { text landmark lat lng }
       }
     }
   `;
@@ -383,6 +391,61 @@ export async function getAllOrders(status?: OrderStatus): Promise<Order[]> {
   return (result as { data: { getAllOrders: Order[] } }).data.getAllOrders;
 }
 
+// ── Spot Requests ─────────────────────────────────
+
+export interface CreateSpotRequestInput {
+  name: string;
+  location?: { lat: number; lng: number };
+  areaText?: string;
+  category?: string;
+  ownerPhone?: string;
+  requesterPhone: string;
+}
+
+export async function createSpotRequest(input: CreateSpotRequestInput): Promise<SpotRequest> {
+  const mutation = /* GraphQL */ `
+    mutation CreateSpotRequest($input: CreateSpotRequestInput!) {
+      createSpotRequest(input: $input) {
+        id name location { lat lng } areaText category ownerPhone requesterPhone status createdAt
+      }
+    }
+  `;
+  const result = await client().graphql({ query: mutation, variables: { input } });
+  return (result as { data: { createSpotRequest: SpotRequest } }).data.createSpotRequest;
+}
+
+export async function getSpotRequests(status?: SpotRequestStatus): Promise<SpotRequest[]> {
+  const query = /* GraphQL */ `
+    query GetSpotRequests($status: SpotRequestStatus) {
+      getSpotRequests(status: $status) {
+        id name location { lat lng } areaText category ownerPhone requesterPhone status createdAt
+      }
+    }
+  `;
+  const result = await client().graphql({ query, variables: { status }, authMode: 'userPool' });
+  return (result as { data: { getSpotRequests: SpotRequest[] } }).data.getSpotRequests;
+}
+
+export async function updateSpotRequestStatus(
+  spotRequestId: string,
+  status: SpotRequestStatus
+): Promise<SpotRequest> {
+  const mutation = /* GraphQL */ `
+    mutation UpdateSpotRequestStatus($spotRequestId: ID!, $status: SpotRequestStatus!) {
+      updateSpotRequestStatus(spotRequestId: $spotRequestId, status: $status) {
+        id name location { lat lng } areaText category ownerPhone requesterPhone status createdAt
+      }
+    }
+  `;
+  const result = await client().graphql({
+    query: mutation,
+    variables: { spotRequestId, status },
+    authMode: 'userPool',
+  });
+  return (result as { data: { updateSpotRequestStatus: SpotRequest } }).data
+    .updateSpotRequestStatus;
+}
+
 // ── Reviews ───────────────────────────────────────
 
 export async function getVendorReviews(vendorId: string): Promise<Review[]> {
@@ -493,8 +556,11 @@ export interface UpdateVendorProfileInput {
   location?: { lat: number; lng: number };
   contactDetails?: string;
   whatsappNumber?: string;
+  workingHours?: WorkingHours;
   deliveryType?: 'PERCENTAGE' | 'FLAT';
   deliveryValue?: number;
+  deliveryRadiusKm?: number;
+  categories?: string[];
   hasBankAccount?: boolean;
   digitalPaymentsEnabled?: boolean;
   description?: string;
@@ -505,8 +571,8 @@ export async function updateVendorProfile(input: UpdateVendorProfileInput): Prom
   const mutation = /* GraphQL */ `
     mutation UpdateVendorProfile($input: UpdateVendorProfileInput!) {
       updateVendorProfile(input: $input) {
-        id ownerId name address contactDetails status
-        deliveryType deliveryValue hasBankAccount digitalPaymentsEnabled whatsappNumber
+        id ownerId name address contactDetails status workingHours
+        deliveryType deliveryValue deliveryRadiusKm categories hasBankAccount digitalPaymentsEnabled whatsappNumber
         imageUrl description createdAt
         location { lat lng }
       }
@@ -528,7 +594,7 @@ export async function updateVendorBankDetails(
     mutation UpdateVendorBankDetails($vendorId: ID!, $bankDetails: BankDetailsInput!) {
       updateVendorBankDetails(vendorId: $vendorId, bankDetails: $bankDetails) {
         id ownerId name address contactDetails status
-        deliveryType deliveryValue hasBankAccount whatsappNumber
+        deliveryType deliveryValue deliveryRadiusKm categories hasBankAccount whatsappNumber
         imageUrl description createdAt
       }
     }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Save, Smartphone } from 'lucide-react';
+import { ArrowLeft, Save, Smartphone, MapPin } from 'lucide-react';
 import { useAuthStore } from '../../state/authStore';
 import {
   getVendor,
@@ -8,11 +8,25 @@ import {
   updateVendorBankDetails,
   updateVendorProfile,
 } from '../../services/api';
+import { getCurrentPosition } from '../../domain/distance';
+import { WEEKDAYS, WEEKDAY_LABELS } from '../../domain/hours';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { PopiaNotice } from '../../components/PopiaNotice';
 import { LoadingSpinner } from '../../components/ui/Card';
-import type { Vendor } from '../../types';
+import type { Vendor, WorkingHours } from '../../types';
+
+const CATEGORY_OPTIONS = ['Kota', 'Braai', 'Mogodu', 'Plates', 'Bakery', 'Drinks'];
+
+const DEFAULT_HOURS: WorkingHours = {
+  monday: '09:00-18:00',
+  tuesday: '09:00-18:00',
+  wednesday: '09:00-18:00',
+  thursday: '09:00-18:00',
+  friday: '09:00-18:00',
+  saturday: '09:00-18:00',
+  sunday: 'closed',
+};
 
 export function VendorSettings() {
   const navigate = useNavigate();
@@ -45,6 +59,20 @@ export function VendorSettings() {
   // cash/EFT on pickup or delivery for now.
   const [digitalPaymentsEnabled, setDigitalPaymentsEnabled] = useState(false);
 
+  // Delivery setup
+  const [deliveryType, setDeliveryType] = useState<'FLAT' | 'PERCENTAGE'>('FLAT');
+  const [deliveryValue, setDeliveryValue] = useState('');
+  const [deliveryRadiusKm, setDeliveryRadiusKm] = useState('');
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationMsg, setLocationMsg] = useState('');
+
+  // Trading hours
+  const [workingHours, setWorkingHours] = useState<WorkingHours>(DEFAULT_HOURS);
+
+  // Categories
+  const [categories, setCategories] = useState<string[]>([]);
+
   // Banking details
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -70,6 +98,12 @@ export function VendorSettings() {
           setWhatsappNumber(v.whatsappNumber || '');
           setDescription(v.description || '');
           setDigitalPaymentsEnabled(v.digitalPaymentsEnabled === true);
+          setDeliveryType(v.deliveryType || 'FLAT');
+          setDeliveryValue(v.deliveryValue != null ? String(v.deliveryValue) : '');
+          setDeliveryRadiusKm(v.deliveryRadiusKm != null ? String(v.deliveryRadiusKm) : '');
+          setLocation(v.location || null);
+          setWorkingHours({ ...DEFAULT_HOURS, ...(v.workingHours || {}) });
+          setCategories(v.categories || []);
         }
         setBankName(bank?.bankName || '');
         setAccountNumber(bank?.accountNumber || '');
@@ -112,6 +146,12 @@ export function VendorSettings() {
         whatsappNumber: whatsappNumber.trim().replace(/\s/g, '') || undefined,
         description: description.trim() || undefined,
         digitalPaymentsEnabled,
+        deliveryType,
+        deliveryValue: deliveryValue ? Number(deliveryValue) : undefined,
+        deliveryRadiusKm: deliveryRadiusKm ? Number(deliveryRadiusKm) : undefined,
+        location: location || undefined,
+        workingHours,
+        categories,
       });
 
       const bankPayload = {
@@ -140,6 +180,29 @@ export function VendorSettings() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleUseMyLocation() {
+    setLocating(true);
+    setLocationMsg('');
+    const coords = await getCurrentPosition();
+    if (coords) {
+      setLocation(coords);
+      setLocationMsg(`Pin saved: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`);
+    } else {
+      setLocationMsg('Could not get your location — check location permissions and try again.');
+    }
+    setLocating(false);
+  }
+
+  function toggleCategory(cat: string) {
+    setCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
+  }
+
+  function setDayHours(day: keyof WorkingHours, value: string) {
+    setWorkingHours((prev) => ({ ...prev, [day]: value }));
   }
 
   if (loading) {
@@ -219,6 +282,158 @@ export function VendorSettings() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="A short description of your business"
+          />
+        </section>
+
+        {/* Location pin */}
+        <section className="bg-white rounded-xl border border-stone-100 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <MapPin size={16} className="text-kasi-orange" />
+            <h2 className="font-semibold text-stone-800 text-sm uppercase tracking-wide">
+              Map Location
+            </h2>
+          </div>
+          <p className="text-xs text-stone-500">
+            Drop a pin at your business so customers can see your spot and distance on the map.
+          </p>
+          {location && (
+            <p className="text-xs text-stone-600">
+              Current pin: {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleUseMyLocation}
+            loading={locating}
+          >
+            <MapPin size={16} className="mr-2" />
+            {location ? 'Re-drop pin at my location' : 'Use my location'}
+          </Button>
+          {locationMsg && <p className="text-xs text-stone-500">{locationMsg}</p>}
+        </section>
+
+        {/* Categories */}
+        <section className="bg-white rounded-xl border border-stone-100 p-4 space-y-3">
+          <h2 className="font-semibold text-stone-800 text-sm uppercase tracking-wide">
+            Categories
+          </h2>
+          <p className="text-xs text-stone-500">
+            Helps customers filter for the kind of food you sell.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {CATEGORY_OPTIONS.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => toggleCategory(cat)}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                  categories.includes(cat)
+                    ? 'border-kasi-orange bg-orange-50 text-kasi-orange'
+                    : 'border-stone-200 text-stone-600'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Trading hours */}
+        <section className="bg-white rounded-xl border border-stone-100 p-4 space-y-3">
+          <h2 className="font-semibold text-stone-800 text-sm uppercase tracking-wide">
+            Trading Hours
+          </h2>
+          <p className="text-xs text-stone-500">
+            Set each day as "HH:MM-HH:MM" or mark it closed. Customers see an open/closed badge
+            based on this.
+          </p>
+          <div className="space-y-2">
+            {WEEKDAYS.map((day) => {
+              const value = workingHours[day] || 'closed';
+              const isClosed = value === 'closed';
+              const [open, close] = isClosed ? ['09:00', '18:00'] : value.split('-');
+              return (
+                <div key={day} className="flex items-center gap-2">
+                  <span className="w-24 text-sm text-stone-600">{WEEKDAY_LABELS[day]}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDayHours(day, isClosed ? `${open}-${close}` : 'closed')
+                    }
+                    className={`rounded-lg border px-2 py-1 text-xs font-semibold ${
+                      isClosed
+                        ? 'border-stone-200 text-stone-500'
+                        : 'border-kasi-orange bg-orange-50 text-kasi-orange'
+                    }`}
+                  >
+                    {isClosed ? 'Closed' : 'Open'}
+                  </button>
+                  {!isClosed && (
+                    <>
+                      <input
+                        type="time"
+                        value={open}
+                        onChange={(e) => setDayHours(day, `${e.target.value}-${close}`)}
+                        className="rounded-lg border border-stone-200 px-2 py-1 text-sm"
+                      />
+                      <span className="text-stone-400 text-sm">to</span>
+                      <input
+                        type="time"
+                        value={close}
+                        onChange={(e) => setDayHours(day, `${open}-${e.target.value}`)}
+                        className="rounded-lg border border-stone-200 px-2 py-1 text-sm"
+                      />
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Delivery setup */}
+        <section className="bg-white rounded-xl border border-stone-100 p-4 space-y-3">
+          <h2 className="font-semibold text-stone-800 text-sm uppercase tracking-wide">
+            Delivery Setup
+          </h2>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setDeliveryType('FLAT')}
+              className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold ${
+                deliveryType === 'FLAT'
+                  ? 'border-kasi-orange bg-orange-50 text-kasi-orange'
+                  : 'border-stone-200 text-stone-600'
+              }`}
+            >
+              Flat fee (R)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeliveryType('PERCENTAGE')}
+              className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold ${
+                deliveryType === 'PERCENTAGE'
+                  ? 'border-kasi-orange bg-orange-50 text-kasi-orange'
+                  : 'border-stone-200 text-stone-600'
+              }`}
+            >
+              % of order
+            </button>
+          </div>
+          <Input
+            label={deliveryType === 'FLAT' ? 'Delivery fee (R)' : 'Delivery fee (% of order)'}
+            value={deliveryValue}
+            onChange={(e) => setDeliveryValue(e.target.value)}
+            placeholder={deliveryType === 'FLAT' ? '15' : '10'}
+            type="number"
+          />
+          <Input
+            label="Delivery radius (km)"
+            value={deliveryRadiusKm}
+            onChange={(e) => setDeliveryRadiusKm(e.target.value)}
+            placeholder="5"
+            type="number"
           />
         </section>
 

@@ -8,6 +8,7 @@ import { StarRating } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { telHref, whatsappHref } from '../../domain/contact';
+import { getOpenStatus } from '../../domain/hours';
 import type { Vendor, MenuItem } from '../../types';
 
 export function VendorDetailsScreen() {
@@ -76,6 +77,7 @@ export function VendorDetailsScreen() {
   if (!vendor) return <div className="p-8 text-center text-stone-500">Vendor not found.</div>;
 
   const categories = [...new Set(menu.map((m) => m.category || 'Menu'))];
+  const openStatus = getOpenStatus(vendor.workingHours);
 
   return (
     <div className="max-w-3xl mx-auto pb-28 md:pb-8">
@@ -102,12 +104,21 @@ export function VendorDetailsScreen() {
         )}
 
         <div className="flex flex-wrap gap-4 mt-3 text-sm text-stone-600">
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+              openStatus.isOpen ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'
+            }`}
+          >
+            {openStatus.isOpen ? `Open · ${openStatus.label}` : openStatus.label}
+          </span>
           {vendor.rating != null && <StarRating rating={vendor.rating} />}
 
-          <span className="flex items-center gap-1">
-            <MapPin size={14} className="text-kasi-orange" />
-            {vendor.address}
-          </span>
+          {vendor.address && (
+            <span className="flex items-center gap-1">
+              <MapPin size={14} className="text-kasi-orange" />
+              {vendor.address}
+            </span>
+          )}
 
           {vendor.contactDetails && (
             <span className="flex items-center gap-1">
@@ -209,6 +220,12 @@ export function VendorDetailsScreen() {
 
       {/* Menu */}
       <div className="px-4 py-4">
+        {!openStatus.isOpen && (
+          <div className="mb-4 rounded-xl bg-stone-100 text-stone-600 text-sm px-3 py-2">
+            This spot is closed right now ({openStatus.label}). You can browse the menu, but
+            ordering is disabled until they're open.
+          </div>
+        )}
         {categories.map((category) => {
           const categoryItems = menu.filter((m) => (m.category || 'Menu') === category);
           return (
@@ -220,6 +237,7 @@ export function VendorDetailsScreen() {
                     key={item.id}
                     item={item}
                     quantity={getCartQuantity(item.id)}
+                    disabled={!openStatus.isOpen}
                     onAdd={() => addItem(vendor.id, item)}
                     onRemove={() => {
                       const qty = getCartQuantity(item.id);
@@ -245,7 +263,7 @@ export function VendorDetailsScreen() {
               <ShoppingCart size={20} />
               <span className="font-semibold">{cartCount} item{cartCount !== 1 ? 's' : ''}</span>
             </span>
-            <span className="font-bold">View cart · R{subtotal().toFixed(2)}</span>
+            <span className="font-bold">· View cart · R{subtotal().toFixed(2)}</span>
           </button>
         </div>
       )}
@@ -256,16 +274,19 @@ export function VendorDetailsScreen() {
 function MenuItemRow({
   item,
   quantity,
+  disabled,
   onAdd,
   onRemove,
 }: {
   item: MenuItem;
   quantity: number;
+  disabled?: boolean;
   onAdd: () => void;
   onRemove: () => void;
 }) {
+  const canOrder = item.available && !disabled;
   return (
-    <div className={`flex items-center gap-3 bg-white rounded-xl border border-stone-100 p-3 ${!item.available ? 'opacity-50' : ''}`}>
+    <div className={`flex items-center gap-3 bg-white rounded-xl border border-stone-100 p-3 ${!canOrder ? 'opacity-50' : ''}`}>
       {item.imageUrl && (
         <img src={item.imageUrl} alt={item.name} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
       )}
@@ -278,7 +299,7 @@ function MenuItemRow({
         {!item.available && <div className="text-xs text-red-500 mt-0.5">Currently unavailable</div>}
       </div>
 
-      {item.available && (
+      {canOrder && (
         <div className="flex items-center gap-2 flex-shrink-0">
           {quantity > 0 ? (
             <>

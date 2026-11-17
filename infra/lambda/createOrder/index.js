@@ -72,6 +72,7 @@ exports.handler = async (event) => {
     paymentMethod,
     contactPhone,
     specialInstructions,
+    deliveryAddress,
     items,
   } = input;
 
@@ -159,6 +160,7 @@ exports.handler = async (event) => {
     paymentMethod,
     contactPhone,
     specialInstructions: specialInstructions || null,
+    deliveryAddress: deliveryMethod === 'DELIVERY' ? deliveryAddress || null : null,
     hasBankAccount: vendor.hasBankAccount,
     source: 'WEB',
     createdAt: now,
@@ -244,6 +246,7 @@ exports.handler = async (event) => {
     paymentMethod,
     contactPhone,
     specialInstructions: specialInstructions || null,
+    deliveryAddress: deliveryMethod === 'DELIVERY' ? deliveryAddress || null : null,
     source: 'WEB',
     createdAt: now,
     updatedAt: now,

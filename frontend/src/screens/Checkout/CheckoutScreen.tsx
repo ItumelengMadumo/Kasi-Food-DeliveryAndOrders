@@ -1,13 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, CheckCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, LocateFixed } from 'lucide-react';
 import { useCartStore } from '../../state/cartStore';
 import { useAuthStore } from '../../state/authStore';
 import { useOrderStore } from '../../state/orderStore';
 import { createOrder, getVendor, initiatePayment } from '../../services/api';
+import { getCurrentPosition, type Coordinates } from '../../domain/distance';
 import { Button } from '../../components/ui/Button';
 import { Input, Textarea } from '../../components/ui/Input';
 import type { DeliveryMethod, PaymentMethod, PaymentProvider, Vendor } from '../../types';
+
+/** Mirrors infra/lambda/createOrder/index.js#calculateDeliveryFee so the UI total never diverges from what's persisted. */
+function calculateDeliveryFee(vendor: Vendor | null, subtotal: number, deliveryMethod: DeliveryMethod): number {
+  if (deliveryMethod === 'PICKUP') return 0;
+  if (!vendor?.deliveryType || vendor.deliveryValue == null) return 15; // fallback flat fee when vendor hasn't configured one
+  if (vendor.deliveryType === 'PERCENTAGE') return parseFloat(((vendor.deliveryValue / 100) * subtotal).toFixed(2));
+  if (vendor.deliveryType === 'FLAT') return parseFloat(vendor.deliveryValue.toFixed(2));
+  return 0;
+}
 
 type CheckoutStep = 'details' | 'payment' | 'confirm';
 
@@ -36,6 +46,20 @@ export function CheckoutScreen() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH_ON_DELIVERY');
   const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>('PAYFAST');
   const [specialInstructions, setSpecialInstructions] = useState('');
+  const [addressText, setAddressText] = useState('');
+  const [landmark, setLandmark] = useState('');
+  const [addressLocation, setAddressLocation] = useState<Coordinates | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState('');
+
+  // Keep the payment method valid whenever it's no longer offered for the chosen fulfilment method.
+  useEffect(() => {
+    if (deliveryMethod === 'DELIVERY' && paymentMethod === 'CASH_ON_PICKUP') {
+      setPaymentMethod('CASH_ON_DELIVERY');
+    } else if (deliveryMethod === 'PICKUP' && paymentMethod === 'CASH_ON_DELIVERY') {
+      setPaymentMethod('CASH_ON_PICKUP');
+    }
+  }, [deliveryMethod, paymentMethod]);
 
   // Validation
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -45,15 +69,29 @@ export function CheckoutScreen() {
     return null;
   }
 
-  const deliveryFee = deliveryMethod === 'PICKUP' ? 0 : 15; // placeholder
+  const deliveryFee = calculateDeliveryFee(vendor, subtotal(), deliveryMethod);
   const total = subtotal() + deliveryFee;
+
+  async function handleUseLocation() {
+    setLocating(true);
+    setLocationError('');
+    const pos = await getCurrentPosition();
+    if (pos) {
+      setAddressLocation(pos);
+    } else {
+      setLocationError("Couldn't get your location — check that location access is allowed.");
+    }
+    setLocating(false);
+  }
 
   function validate() {
     const newErrors: Record<string, string> = {};
-    if (!user && !guestName.trim()) newErrors.name = 'Name is required';
-    if (!user?.phone && !guestPhone.trim()) newErrors.phone = 'Phone number is required';
+    if (!guestName.trim()) newErrors.name = 'Name is required';
+    if (!guestPhone.trim()) newErrors.phone = 'Phone number is required';
     if (guestPhone && !/^[\d\s+()-]{7,15}$/.test(guestPhone))
       newErrors.phone = 'Enter a valid phone number';
+    if (deliveryMethod === 'DELIVERY' && !addressText.trim())
+      newErrors.address = 'Delivery address is required';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }
@@ -84,6 +122,15 @@ export function CheckoutScreen() {
         paymentMethod,
         contactPhone,
         specialInstructions: specialInstructions || undefined,
+        deliveryAddress:
+          deliveryMethod === 'DELIVERY'
+            ? {
+                text: addressText.trim(),
+                landmark: landmark.trim() || undefined,
+                lat: addressLocation?.lat,
+                lng: addressLocation?.lng,
+              }
+            : undefined,
         items: orderItems,
       });
 
@@ -125,30 +172,28 @@ export function CheckoutScreen() {
       </div>
 
       <div className="space-y-5">
-        {/* Contact details — only for guests */}
-        {(!user || isGuest) && (
-          <section className="bg-white rounded-xl border border-stone-100 p-4">
-            <h2 className="font-semibold text-stone-800 mb-3">Your Details</h2>
-            <div className="space-y-3">
-              <Input
-                label="Full Name *"
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-                placeholder="e.g. Thandi Dlamini"
-                error={errors.name}
-              />
-              <Input
-                label="Phone Number *"
-                type="tel"
-                value={guestPhone}
-                onChange={(e) => setGuestPhone(e.target.value)}
-                placeholder="e.g. 071 234 5678"
-                hint="The vendor will contact you on this number"
-                error={errors.phone}
-              />
-            </div>
-          </section>
-        )}
+        {/* Contact details */}
+        <section className="bg-white rounded-xl border border-stone-100 p-4">
+          <h2 className="font-semibold text-stone-800 mb-3">Your Details</h2>
+          <div className="space-y-3">
+            <Input
+              label="Full Name *"
+              value={guestName}
+              onChange={(e) => setGuestName(e.target.value)}
+              placeholder="e.g. Thandi Dlamini"
+              error={errors.name}
+            />
+            <Input
+              label="Phone Number *"
+              type="tel"
+              value={guestPhone}
+              onChange={(e) => setGuestPhone(e.target.value)}
+              placeholder="e.g. 071 234 5678"
+              hint="The vendor will contact you on this number"
+              error={errors.phone}
+            />
+          </div>
+        </section>
 
         {/* Delivery method */}
         <section className="bg-white rounded-xl border border-stone-100 p-4">
@@ -170,13 +215,44 @@ export function CheckoutScreen() {
           </div>
         </section>
 
+        {/* Delivery address */}
+        {deliveryMethod === 'DELIVERY' && (
+          <section className="bg-white rounded-xl border border-stone-100 p-4">
+            <h2 className="font-semibold text-stone-800 mb-3">Where should we deliver?</h2>
+            <div className="space-y-3">
+              <Textarea
+                label="Delivery Address *"
+                value={addressText}
+                onChange={(e) => setAddressText(e.target.value)}
+                placeholder="e.g. 12 Vilakazi Street, Orlando West"
+                rows={2}
+                error={errors.address}
+              />
+              <Input
+                label="Landmark notes (optional)"
+                value={landmark}
+                onChange={(e) => setLandmark(e.target.value)}
+                placeholder="e.g. blue gate opposite the tavern"
+              />
+              <Button type="button" variant="secondary" onClick={handleUseLocation} loading={locating}>
+                <LocateFixed size={16} className="mr-2" />
+                {addressLocation ? 'Location captured ✓' : 'Use My Location'}
+              </Button>
+              {locationError && <p className="text-xs text-red-600">{locationError}</p>}
+            </div>
+          </section>
+        )}
+
         {/* Payment method */}
         <section className="bg-white rounded-xl border border-stone-100 p-4">
           <h2 className="font-semibold text-stone-800 mb-3">How will you pay?</h2>
           <div className="space-y-2">
             {PAYMENT_OPTIONS.filter(
               (option) => option.value !== 'DIGITAL' || vendor?.digitalPaymentsEnabled
-            ).map(({ value, label, description }) => (
+            )
+              .filter((option) => option.value !== 'CASH_ON_PICKUP' || deliveryMethod === 'PICKUP')
+              .filter((option) => option.value !== 'CASH_ON_DELIVERY' || deliveryMethod === 'DELIVERY')
+              .map(({ value, label, description }) => (
               <button
                 key={value}
                 onClick={() => setPaymentMethod(value)}

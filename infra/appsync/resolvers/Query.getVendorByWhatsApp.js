@@ -37,6 +37,8 @@ export function response(ctx) {
     workingHours: item.workingHours,
     status: item.status,
     deliveryType: item.deliveryType,
+    deliveryRadiusKm: item.deliveryRadiusKm,
+    categories: item.categories,
     deliveryValue: item.deliveryValue,
     hasBankAccount: item.hasBankAccount,
     whatsappNumber: item.GSI3PK || item.whatsappNumber || null,

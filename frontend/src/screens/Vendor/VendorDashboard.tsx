@@ -12,6 +12,7 @@ import {
   BarChart3,
   Trash2,
   MessageCircle,
+  LocateFixed,
 } from 'lucide-react';
 import { useAuthStore } from '../../state/authStore';
 import {
@@ -24,10 +25,11 @@ import {
   createOrder,
   subscribeToNewOrders,
 } from '../../services/api';
+import { getCurrentPosition, type Coordinates } from '../../domain/distance';
 import { LoadingSpinner } from '../../components/ui/Card';
 import { OrderStatusBadge } from '../../components/ui/StatusBadge';
 import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
+import { Input, Textarea } from '../../components/ui/Input';
 import { WhatsAppMenuPreview } from '../../components/WhatsAppMenuPreview';
 import type { WhatsAppBankingDetails } from '../../domain/whatsappMenu';
 import type { MenuItem, Order, OrderStatus, OrderSource } from '../../types';
@@ -384,7 +386,7 @@ export function VendorDashboard() {
           onClick={() => setTab('orders')}
         />
         <TabButton
-          label={`Menu (${menu.length})`}
+          label={loading ? 'Menu…' : `Menu (${menu.length})`}
           active={tab === 'menu'}
           onClick={() => setTab('menu')}
         />
@@ -1017,6 +1019,11 @@ function ManualOrderForm({
   const [customerPhone, setCustomerPhone] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState<'PICKUP' | 'DELIVERY'>('PICKUP');
   const [paymentMethod, setPaymentMethod] = useState<string>('CASH_ON_PICKUP');
+  const [addressText, setAddressText] = useState('');
+  const [landmark, setLandmark] = useState('');
+  const [addressLocation, setAddressLocation] = useState<Coordinates | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [selectedItemId, setSelectedItemId] = useState(menu[0]?.id || '');
   const [quantity, setQuantity] = useState(1);
@@ -1043,6 +1050,18 @@ function ManualOrderForm({
     setCart((prev) => prev.filter((c) => c.menuItemId !== menuItemId));
   }
 
+  async function handleUseLocation() {
+    setLocating(true);
+    setLocationError('');
+    const pos = await getCurrentPosition();
+    if (pos) {
+      setAddressLocation(pos);
+    } else {
+      setLocationError("Couldn't get location — check that location access is allowed.");
+    }
+    setLocating(false);
+  }
+
   const total = cart.reduce((s, c) => s + c.price * c.quantity, 0);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -1061,6 +1080,10 @@ function ManualOrderForm({
       setError('Please add at least one item.');
       return;
     }
+    if (deliveryMethod === 'DELIVERY' && !addressText.trim()) {
+      setError('Delivery address is required.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -1070,6 +1093,15 @@ function ManualOrderForm({
         deliveryMethod,
         paymentMethod,
         contactPhone: customerPhone.trim(),
+        deliveryAddress:
+          deliveryMethod === 'DELIVERY'
+            ? {
+                text: addressText.trim(),
+                landmark: landmark.trim() || undefined,
+                lat: addressLocation?.lat,
+                lng: addressLocation?.lng,
+              }
+            : undefined,
         items: cart,
       });
       onOrderCreated(order);
@@ -1227,6 +1259,28 @@ function ManualOrderForm({
             ))}
           </div>
         </div>
+        {deliveryMethod === 'DELIVERY' && (
+          <div className="space-y-3">
+            <Textarea
+              label="Delivery Address *"
+              value={addressText}
+              onChange={(e) => setAddressText(e.target.value)}
+              placeholder="e.g. 12 Vilakazi Street, Orlando West"
+              rows={2}
+            />
+            <Input
+              label="Landmark notes (optional)"
+              value={landmark}
+              onChange={(e) => setLandmark(e.target.value)}
+              placeholder="e.g. blue gate opposite the tavern"
+            />
+            <Button type="button" size="sm" variant="secondary" onClick={handleUseLocation} loading={locating}>
+              <LocateFixed size={16} className="mr-2" />
+              {addressLocation ? 'Location captured ✓' : 'Use My Location'}
+            </Button>
+            {locationError && <p className="text-xs text-red-600">{locationError}</p>}
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-stone-700 mb-1">
             Payment method
