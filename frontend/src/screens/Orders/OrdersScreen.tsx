@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Package, RefreshCw } from 'lucide-react';
 import { useAuthStore } from '../../state/authStore';
 import { useOrderStore } from '../../state/orderStore';
-import { getCustomerOrders } from '../../services/api';
+import { getCustomerOrders, getOrder } from '../../services/api';
 import { OrderStatusBadge } from '../../components/ui/StatusBadge';
 import { LoadingSpinner, EmptyState } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -12,14 +12,19 @@ import type { Order } from '../../types';
 
 export function OrdersScreen() {
   const navigate = useNavigate();
+  const { orderId } = useParams<{ orderId?: string }>();
   const { user, isAuthenticated } = useAuthStore();
-  const { activeOrder } = useOrderStore();
+  const { activeOrder, guestOrderIds } = useOrderStore();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated && user) loadOrders();
-  }, [isAuthenticated, user]);
+    if (isAuthenticated && user && !user.isGuest) {
+      loadOrders();
+    } else {
+      loadGuestOrders();
+    }
+  }, [isAuthenticated, user, orderId]);
 
   async function loadOrders() {
     if (!user || user.isGuest) return;
@@ -35,7 +40,22 @@ export function OrdersScreen() {
     }
   }
 
+  async function loadGuestOrders() {
+    const ids = orderId ? [orderId] : guestOrderIds;
+    if (ids.length === 0) return;
+    setLoading(true);
+    try {
+      const results = await Promise.all(ids.map((id) => getOrder(id).catch(() => null)));
+      setOrders(results.filter((o): o is Order => o !== null));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const hasGuestOrders = guestOrderIds.length > 0 || !!activeOrder;
   const displayOrders = isAuthenticated && !user?.isGuest
+    ? orders
+    : orders.length > 0
     ? orders
     : activeOrder
     ? [activeOrder]
@@ -45,9 +65,9 @@ export function OrdersScreen() {
     <main className="max-w-2xl mx-auto px-4 py-6 pb-24 md:pb-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold">My Orders</h1>
-        {(isAuthenticated || activeOrder) && (
+        {(isAuthenticated || hasGuestOrders) && (
           <button
-            onClick={loadOrders}
+            onClick={() => (isAuthenticated && user && !user.isGuest ? loadOrders() : loadGuestOrders())}
             className="p-2 text-stone-500 hover:text-stone-800 transition-colors"
             aria-label="Refresh"
           >
@@ -56,7 +76,7 @@ export function OrdersScreen() {
         )}
       </div>
 
-      {!isAuthenticated && !activeOrder && (
+      {!isAuthenticated && !hasGuestOrders && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-800">
           <strong>Sign in</strong> to see your full order history, or{' '}
           <button className="underline font-semibold" onClick={() => navigate('/auth')}>

@@ -25,7 +25,7 @@ export function CheckoutScreen() {
   const navigate = useNavigate();
   const { items, vendorId, subtotal, clearCart } = useCartStore();
   const { user, isGuest } = useAuthStore();
-  const { setActiveOrder } = useOrderStore();
+  const { setActiveOrder, addGuestOrderId } = useOrderStore();
 
   const [step, setStep] = useState<CheckoutStep>('details');
   const [loading, setLoading] = useState(false);
@@ -133,6 +133,8 @@ export function CheckoutScreen() {
             : undefined,
         items: orderItems,
       });
+
+      if (isGuest || !user) addGuestOrderId(order.id);
 
       if (paymentMethod === 'DIGITAL') {
         // Redirect to the gateway — don't show the confirmation screen until
