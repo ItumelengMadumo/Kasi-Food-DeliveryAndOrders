@@ -254,7 +254,7 @@ export function VendorDetailsScreen() {
 
       {/* Cart bar */}
       {cartCount > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 md:bottom-4 md:left-auto md:right-4 md:max-w-sm bg-kasi-orange text-white p-4 md:rounded-xl shadow-xl z-50">
+        <div className="fixed bottom-16 left-0 right-0 md:bottom-4 md:left-auto md:right-4 md:max-w-sm bg-kasi-orange text-white p-4 md:rounded-xl shadow-xl z-50">
           <button
             onClick={() => navigate('/cart')}
             className="w-full flex items-center justify-between"
