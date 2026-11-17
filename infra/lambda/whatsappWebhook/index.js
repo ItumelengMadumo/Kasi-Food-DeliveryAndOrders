@@ -366,11 +366,30 @@ const formatCart = (cart) => formatCartForWhatsApp(cart);
 
 // ─── State machine ────────────────────────────────────────────────────────
 
+// Customers now order on the web, not through this bot (see the product
+// decision in the Nov 2026 assessment: "Retire the customer-facing WhatsApp
+// ordering bot"). The state machine that used to browse the menu, build a
+// cart, and create an order over chat is kept below but no longer called —
+// vendors still get their own WhatsApp order notifications/actions
+// separately, and this number should keep working for that. Deliberately
+// left in place (not deleted) in case vendor-side WhatsApp flows still rely
+// on the same Twilio number/webhook wiring.
+const CUSTOMER_ORDER_URL = process.env.CUSTOMER_ORDER_URL || 'https://kasieats.geekysolutions.co.za';
+
 /**
- * Route the incoming message through the session state machine and
- * return the reply text.
+ * Reply to any incoming customer WhatsApp message with a redirect to the
+ * website — ordering no longer happens over chat.
  */
-async function processMessage(customerPhone, vendor, session, messageText) {
+async function processMessage(customerPhone, vendor, _session, _messageText) {
+  return (
+    `Hi! 👋 You can now order from *${vendor.name}* straight from our website — ` +
+    `no more typing in WhatsApp.\n\n${CUSTOMER_ORDER_URL}\n\n` +
+    `Search for *${vendor.name}*, add what you'd like, and you'll get a ready time right away.`
+  );
+}
+
+// eslint-disable-next-line no-unused-vars
+async function _legacyProcessMessage(customerPhone, vendor, session, messageText) {
   const vendorId = vendor.PK.replace('VENDOR#', '');
   const upperMsg = messageText.trim().toUpperCase();
 
