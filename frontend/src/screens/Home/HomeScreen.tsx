@@ -539,6 +539,7 @@ const CONTACT_OPTIONS = [
     description: 'Reach out for platform questions, setup help, or vendor onboarding support.',
   },
   {
+    // TODO: swap for the real support/WhatsApp Business number before pilot launch.
     title: 'WhatsApp',
     value: '+27 72 000 0000',
     description: 'Use WhatsApp support for quick help with vendor account setup and guidance.',
