@@ -15,6 +15,21 @@ import {
 
 type AuthMode = 'login' | 'register' | 'confirm';
 
+/** Cognito's raw error text (e.g. "phone_number: ... international format") shouldn't reach the user. */
+function friendlyAuthError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : '';
+  if (/phone_number/i.test(msg) || /international format/i.test(msg)) {
+    return 'Enter your phone number as 071 234 5678 or +27 71 234 5678.';
+  }
+  if (/incorrect username or password/i.test(msg)) {
+    return 'Incorrect phone number or password.';
+  }
+  if (/user does not exist/i.test(msg)) {
+    return 'We could not find an account with that phone number.';
+  }
+  return msg || 'Authentication failed. Please try again.';
+}
+
 export function AuthScreen() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -86,15 +101,16 @@ export function AuthScreen() {
 
     try {
       if (mode === 'confirm') {
-        await confirmRegistration(phone, confirmationCode);
-        const authenticatedUser = await signInWithCognito(phone, password);
+        const normalized = normalizePhoneNumber(phone);
+        await confirmRegistration(normalized, confirmationCode);
+        const authenticatedUser = await signInWithCognito(normalized, password);
         setUser(authenticatedUser);
         navigate(destinationByRole[authenticatedUser.role] || '/');
         return;
       }
 
       if (mode === 'login') {
-        const authenticatedUser = await signInWithCognito(phone, password);
+        const authenticatedUser = await signInWithCognito(normalizePhoneNumber(phone), password);
         setUser(authenticatedUser);
         navigate(destinationByRole[authenticatedUser.role]);
         return;
@@ -125,8 +141,7 @@ export function AuthScreen() {
       setMode('confirm');
       setInfo(`Verification code sent to ${normalizedPhone}. Enter it below to finish setup.`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Authentication failed';
-      setError(msg);
+      setError(friendlyAuthError(err));
     } finally {
       setLoading(false);
     }
@@ -257,8 +272,7 @@ export function AuthScreen() {
                   await resendRegistrationCode(phone);
                   setInfo(`A new verification code was sent to ${phone}.`);
                 } catch (err: unknown) {
-                  const msg = err instanceof Error ? err.message : 'Could not resend code';
-                  setError(msg);
+                  setError(friendlyAuthError(err));
                 } finally {
                   setLoading(false);
                 }

@@ -122,10 +122,10 @@ export function Navbar() {
             </div>
           ) : (
             <Link
-              to="/auth?mode=login&role=vendor"
+              to={isPublicMarketingRoute ? '/auth?mode=login&role=vendor' : '/orders'}
               className="text-sm font-semibold text-kasi-orange hover:underline"
             >
-              {user?.isGuest ? `Hi, ${user.name}` : 'Sign In'}
+              {user?.isGuest ? `Hi, ${user.name}` : isPublicMarketingRoute ? 'Sign In' : 'My Orders'}
             </Link>
           )}
         </div>
@@ -200,8 +200,10 @@ export function BottomNav() {
         { to: '/', label: 'Home', icon: <Home size={22} /> },
         { to: '/orders', label: 'Orders', icon: <Package size={22} /> },
         { to: '/cart', label: 'Cart', icon: <ShoppingCart size={22} />, badge: totalItems },
-        { to: '/auth?mode=login&role=vendor', label: 'Account', icon: <User size={22} /> },
       ];
+  // No separate "Account" tab for customers yet — there's no customer account
+  // screen, and it used to open the vendor sign-in flow by mistake. "Orders"
+  // doubles as guest order lookup (persisted order IDs) until one exists.
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 z-50">
