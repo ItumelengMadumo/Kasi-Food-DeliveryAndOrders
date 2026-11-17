@@ -52,6 +52,13 @@ export interface Location {
   lng: number;
 }
 
+export interface DeliveryAddress {
+  text: string;
+  landmark?: string;
+  lat?: number;
+  lng?: number;
+}
+
 export interface WorkingHours {
   monday?: string;
   tuesday?: string;
@@ -81,6 +88,8 @@ export interface Vendor {
   status: VendorStatus;
   deliveryType?: DeliveryType;
   deliveryValue?: number;
+  deliveryRadiusKm?: number;
+  categories?: string[];
   hasBankAccount: boolean;
   digitalPaymentsEnabled?: boolean;
   whatsappNumber?: string;
@@ -126,6 +135,7 @@ export interface Order {
   status: OrderStatus;
   deliveryMethod: DeliveryMethod;
   deliveryFee?: number;
+  deliveryAddress?: DeliveryAddress;
   deliveryProvider?: DeliveryProvider;
   courierName?: string;
   courierTrackingUrl?: string;
@@ -168,6 +178,20 @@ export interface Review {
   guestName?: string;
   rating: number;
   comment?: string;
+  createdAt: string;
+}
+
+export type SpotRequestStatus = 'NEW' | 'CONTACTED' | 'ONBOARDING' | 'LIVE' | 'DECLINED';
+
+export interface SpotRequest {
+  id: string;
+  name: string;
+  location?: Location;
+  areaText?: string;
+  category?: string;
+  ownerPhone?: string;
+  requesterPhone: string;
+  status: SpotRequestStatus;
   createdAt: string;
 }
 

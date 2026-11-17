@@ -92,6 +92,15 @@
         "description", "hasBankAccount", "whatsappNumber", "status", "createdAt"
       ]
     },
+    "SpotRequest": {
+      "PK": "SPOTREQUEST#<spotRequestId>",
+      "SK": "PROFILE",
+      "attributes": [
+        "name", "location", "areaText", "category",
+        "ownerPhone", "requesterPhone", "status", "createdAt"
+      ],
+      "_note": "Listed via Scan+filter (like VendorApplication) since request volume doesn't warrant a GSI yet."
+    },
     "MenuItem": {
       "PK": "VENDOR#<vendorId>",
       "SK": "MENU#<menuItemId>",

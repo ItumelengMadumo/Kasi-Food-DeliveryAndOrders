@@ -101,6 +101,13 @@ type Location {
   lng: Float!
 }
 
+type DeliveryAddress {
+  text: String!
+  landmark: String
+  lat: Float
+  lng: Float
+}
+
 type WorkingHours {
   monday: String
   tuesday: String
@@ -129,6 +136,8 @@ type Vendor {
   status: VendorStatus!
   deliveryType: DeliveryType
   deliveryValue: Float
+  deliveryRadiusKm: Float
+  categories: [String!]
   deliveryProvider: DeliveryProvider
   hasBankAccount: Boolean!
   # Digital payment (PayFast/Ozow) only shows up at checkout when a vendor has
@@ -175,6 +184,7 @@ type Order {
   status: OrderStatus!
   deliveryMethod: DeliveryMethod!
   deliveryFee: Float
+  deliveryAddress: DeliveryAddress
   deliveryProvider: DeliveryProvider
   courierName: String
   courierTrackingUrl: String
@@ -214,6 +224,26 @@ type VendorApplication {
   hasBankAccount: Boolean!
   whatsappNumber: String
   status: VendorStatus!
+  createdAt: AWSDateTime!
+}
+
+enum SpotRequestStatus {
+  NEW
+  CONTACTED
+  ONBOARDING
+  LIVE
+  DECLINED
+}
+
+type SpotRequest {
+  id: ID!
+  name: String!
+  location: Location
+  areaText: String
+  category: String
+  ownerPhone: String
+  requesterPhone: String!
+  status: SpotRequestStatus!
   createdAt: AWSDateTime!
 }
 
@@ -308,6 +338,8 @@ input UpdateVendorProfileInput {
   workingHours: AWSJSON
   deliveryType: DeliveryType
   deliveryValue: Float
+  deliveryRadiusKm: Float
+  categories: [String!]
   hasBankAccount: Boolean
   digitalPaymentsEnabled: Boolean
   whatsappNumber: String
@@ -351,7 +383,15 @@ input CreateOrderInput {
   paymentMethod: PaymentMethod!
   contactPhone: String!
   specialInstructions: String
+  deliveryAddress: DeliveryAddressInput
   items: [OrderItemInput!]!
+}
+
+input DeliveryAddressInput {
+  text: String!
+  landmark: String
+  lat: Float
+  lng: Float
 }
 
 input UpdateOrderStatusInput {
@@ -408,6 +448,15 @@ input UpsertInventoryItemInput {
   status: InventoryStatus
 }
 
+input CreateSpotRequestInput {
+  name: String!
+  location: LocationInput
+  areaText: String
+  category: String
+  ownerPhone: String
+  requesterPhone: String!
+}
+
 input BankDetailsInput {
   bankName: String!
   accountNumber: String!
@@ -444,6 +493,8 @@ type Query {
   getPendingVendorApplications: [VendorApplication!]!
     @aws_cognito_user_pools(cognito_groups: ["ADMIN", "SUPER_ADMIN"])
   getAllOrders(status: OrderStatus, limit: Int): [Order!]!
+    @aws_cognito_user_pools(cognito_groups: ["ADMIN", "SUPER_ADMIN"])
+  getSpotRequests(status: SpotRequestStatus): [SpotRequest!]!
     @aws_cognito_user_pools(cognito_groups: ["ADMIN", "SUPER_ADMIN"])
 
   # Review queries
@@ -522,6 +573,11 @@ type Mutation {
   # Inventory management
   upsertInventoryItem(input: UpsertInventoryItemInput!): InventoryItem!
     @aws_cognito_user_pools(cognito_groups: ["VENDOR", "ADMIN", "SUPER_ADMIN"])
+
+  # Spot requests — public so any customer can ask for a vendor to join
+  createSpotRequest(input: CreateSpotRequestInput!): SpotRequest!
+  updateSpotRequestStatus(spotRequestId: ID!, status: SpotRequestStatus!): SpotRequest!
+    @aws_cognito_user_pools(cognito_groups: ["ADMIN", "SUPER_ADMIN"])
 }
 
 # ── Subscriptions ──────────────────────────────────

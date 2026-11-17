@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Clock, Star, Truck } from 'lucide-react';
+import { MapPin, Star, Truck } from 'lucide-react';
 import { Card } from './ui/Card';
 import { formatDistanceKm } from '../domain/distance';
+import { getOpenStatus } from '../domain/hours';
 import type { Vendor } from '../types';
 
 interface VendorCardProps {
@@ -12,6 +13,7 @@ interface VendorCardProps {
 
 export function VendorCard({ vendor, distanceKm }: VendorCardProps) {
   const navigate = useNavigate();
+  const openStatus = getOpenStatus(vendor.workingHours);
 
   return (
     <Card
@@ -83,7 +85,16 @@ export function VendorCard({ vendor, distanceKm }: VendorCardProps) {
         </div>
 
         {/* Tags */}
-        <div className="flex gap-2 mt-1">
+        <div className="flex gap-2 mt-1 flex-wrap">
+          <span
+            className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+              openStatus.isOpen
+                ? 'bg-green-100 text-green-700'
+                : 'bg-stone-100 text-stone-500'
+            }`}
+          >
+            {openStatus.isOpen ? 'Open' : openStatus.label}
+          </span>
           {!vendor.hasBankAccount && (
             <span className="text-xs bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full">
               Cash on delivery

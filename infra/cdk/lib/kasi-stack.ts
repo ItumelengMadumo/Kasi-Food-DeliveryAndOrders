@@ -588,6 +588,7 @@ export class KasiStack extends Stack {
             ddbSource
         );
         jsResolver('Query', 'getUser', 'Query.getUser.js', ddbSource);
+        jsResolver('Query', 'getSpotRequests', 'Query.getSpotRequests.js', ddbSource);
         jsResolver(
             'Query',
             'getVendorBankDetails',
@@ -630,6 +631,13 @@ export class KasiStack extends Stack {
             ddbSource
         );
         jsResolver('Mutation', 'rejectVendor', 'Mutation.rejectVendor.js', ddbSource);
+        jsResolver('Mutation', 'createSpotRequest', 'Mutation.createSpotRequest.js', ddbSource);
+        jsResolver(
+            'Mutation',
+            'updateSpotRequestStatus',
+            'Mutation.updateSpotRequestStatus.js',
+            ddbSource
+        );
 
         // ── Field resolvers for Order.items and Order.vendor ─────────
         jsResolver('Order', 'items', 'Order.items.js', ddbSource);
