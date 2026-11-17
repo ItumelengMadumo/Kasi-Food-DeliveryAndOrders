@@ -77,6 +77,15 @@ const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
   OUT_FOR_DELIVERY: 'COMPLETED',
 };
 
+// Friendlier verbs than "Mark as PREPARING" for the action button per status.
+const NEXT_STATUS_LABEL: Partial<Record<OrderStatus, string>> = {
+  PENDING: 'Accept',
+  ACCEPTED: 'Start Cooking',
+  PREPARING: 'Mark Ready',
+  READY: 'Handed Over',
+  OUT_FOR_DELIVERY: 'Handed Over',
+};
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function VendorDashboard() {
@@ -96,7 +105,8 @@ export function VendorDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [updatingOrder, setUpdatingOrder] = useState<string | null>(null);
+  const [updatingStatusOrderId, setUpdatingStatusOrderId] = useState<string | null>(null);
+  const [updatingPaymentOrderId, setUpdatingPaymentOrderId] = useState<string | null>(null);
   const [deletingMenuItem, setDeletingMenuItem] = useState<string | null>(null);
   const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
 
@@ -213,30 +223,43 @@ export function VendorDashboard() {
   // ── Order status update ───────────────────────────────────────────────
 
   async function handleUpdateOrderStatus(orderId: string, newStatus: OrderStatus) {
-    setUpdatingOrder(orderId);
+    const previousStatus = orders.find((o) => o.id === orderId)?.status;
+    setUpdatingStatusOrderId(orderId);
+    // Apply immediately so only this button spins, instead of waiting on the
+    // network before the card updates.
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
+    );
     try {
       await updateOrderStatus(orderId, newStatus);
     } catch {
-      // demo mode — continue with local update
+      if (!isDemoMode.current && previousStatus) {
+        // Real failure — roll back the optimistic change.
+        setOrders((prev) =>
+          prev.map((o) => (o.id === orderId ? { ...o, status: previousStatus } : o))
+        );
+      }
+      // demo mode — keep the optimistic update, there's no backend to fail against
     } finally {
-      setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
-      );
-      setUpdatingOrder(null);
+      setUpdatingStatusOrderId(null);
     }
   }
 
   async function handleMarkPaid(orderId: string) {
-    setUpdatingOrder(orderId);
+    setUpdatingPaymentOrderId(orderId);
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, paymentStatus: 'PAID' } : o))
+    );
     try {
       await markOrderPaid(orderId);
     } catch {
-      // demo mode
+      if (!isDemoMode.current) {
+        setOrders((prev) =>
+          prev.map((o) => (o.id === orderId ? { ...o, paymentStatus: 'PENDING' } : o))
+        );
+      }
     } finally {
-      setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, paymentStatus: 'PAID' } : o))
-      );
-      setUpdatingOrder(null);
+      setUpdatingPaymentOrderId(null);
     }
   }
 
@@ -499,8 +522,9 @@ export function VendorDashboard() {
             <p className="mt-1 text-sm text-stone-500">
               Use this module to process live orders, mark payments, and verify what has already been fulfilled.
             </p>
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
               <MiniStat label="Pending" value={orders.filter((o) => o.status === 'PENDING').length} />
+              <MiniStat label="Accepted" value={orders.filter((o) => o.status === 'ACCEPTED').length} />
               <MiniStat label="Preparing" value={orders.filter((o) => o.status === 'PREPARING').length} />
               <MiniStat label="Ready" value={orders.filter((o) => o.status === 'READY').length} />
               <MiniStat label="Completed" value={completedOrders.length} />
@@ -516,7 +540,8 @@ export function VendorDashboard() {
                 order={order}
                 onUpdateStatus={handleUpdateOrderStatus}
                 onMarkPaid={handleMarkPaid}
-                updating={updatingOrder === order.id}
+                updatingStatus={updatingStatusOrderId === order.id}
+                updatingPayment={updatingPaymentOrderId === order.id}
               />
             ))
           )}
@@ -530,7 +555,8 @@ export function VendorDashboard() {
                   order={order}
                   onUpdateStatus={handleUpdateOrderStatus}
                   onMarkPaid={handleMarkPaid}
-                  updating={updatingOrder === order.id}
+                  updatingStatus={updatingStatusOrderId === order.id}
+                  updatingPayment={updatingPaymentOrderId === order.id}
                 />
               ))}
             </>
@@ -774,12 +800,14 @@ function VendorOrderCard({
   order,
   onUpdateStatus,
   onMarkPaid,
-  updating,
+  updatingStatus,
+  updatingPayment,
 }: {
   order: Order;
   onUpdateStatus: (id: string, status: OrderStatus) => void;
   onMarkPaid: (id: string) => void;
-  updating: boolean;
+  updatingStatus: boolean;
+  updatingPayment: boolean;
 }) {
   const navigate = useNavigate();
   const nextStatus = NEXT_STATUS[order.status];
@@ -852,10 +880,10 @@ function VendorOrderCard({
           <Button
             size="sm"
             onClick={() => onUpdateStatus(order.id, nextStatus)}
-            loading={updating}
+            loading={updatingStatus}
             className="flex-1"
           >
-            Mark as {nextStatus.replace(/_/g, ' ')}
+            {NEXT_STATUS_LABEL[order.status] || `Mark as ${nextStatus.replace(/_/g, ' ')}`}
           </Button>
         )}
         {isSelfCertifiable && !isPaid && order.status !== 'CANCELLED' && (
@@ -863,7 +891,7 @@ function VendorOrderCard({
             size="sm"
             variant="secondary"
             onClick={() => onMarkPaid(order.id)}
-            loading={updating}
+            loading={updatingPayment}
           >
             Mark Paid
           </Button>
@@ -882,7 +910,7 @@ function VendorOrderCard({
             size="sm"
             variant="danger"
             onClick={() => onUpdateStatus(order.id, 'CANCELLED')}
-            loading={updating}
+            loading={updatingStatus}
           >
             Reject
           </Button>
